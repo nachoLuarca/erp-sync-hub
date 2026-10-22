@@ -53,5 +53,8 @@ $dockerArgs = @(
     'bash', '/src/scripts/test-container.sh'
 )
 
-docker @dockerArgs
+# En Windows PowerShell 5.1, con ErrorActionPreference=Stop la primera línea que un comando nativo escribe
+# en stderr (xUnit informa ahí los tests fallidos) aborta el script y trunca la salida.
+$ErrorActionPreference = 'Continue'
+docker @dockerArgs 2>&1 | ForEach-Object { $_.ToString() }
 exit $LASTEXITCODE
