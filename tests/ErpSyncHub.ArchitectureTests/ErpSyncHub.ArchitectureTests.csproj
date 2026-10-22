@@ -9,5 +9,9 @@
     <ProjectReference Include="..\..\src\SapB1.Mock\SapB1.Mock.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="NetArchTest.Rules" />
+  </ItemGroup>
+
 </Project>
 
