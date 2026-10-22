@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SapB1.Mock.Admin;
 using SapB1.Mock.Configuration;
+using SapB1.Mock.Items;
 using SapB1.Mock.ServiceLayer;
 using SapB1.Mock.Sessions;
 
@@ -24,8 +25,22 @@ internal static class MockServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ISessionStore, InMemorySessionStore>();
+        services.AddResettableStore<IItemStore, InMemoryItemStore>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Registra un almacén en memoria y lo expone también como <see cref="IResettable"/>,
+    /// para que <c>POST /_mock/reset</c> lo restaure a sus datos semilla.
+    /// </summary>
+    private static void AddResettableStore<TStore, TImplementation>(this IServiceCollection services)
+        where TStore : class
+        where TImplementation : class, TStore, IResettable
+    {
+        services.AddSingleton<TImplementation>();
+        services.AddSingleton<TStore>(sp => sp.GetRequiredService<TImplementation>());
+        services.AddSingleton<IResettable>(sp => sp.GetRequiredService<TImplementation>());
     }
 
     public static WebApplication MapSapMock(this WebApplication app)
@@ -35,6 +50,7 @@ internal static class MockServiceCollectionExtensions
 
         var secured = serviceLayer.MapGroup(string.Empty).AddEndpointFilter<SessionRequiredFilter>();
         secured.MapLogout();
+        secured.MapItems();
 
         app.MapAdmin();
 

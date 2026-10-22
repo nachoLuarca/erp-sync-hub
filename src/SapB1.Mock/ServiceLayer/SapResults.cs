@@ -5,9 +5,6 @@ internal static class SapResults
 {
     public const string ContentType = "application/json;odata=minimalmetadata;charset=utf-8";
 
-    /// <summary>Código de SAP para una sesión inexistente o expirada.</summary>
-    public const int InvalidSessionCode = 301;
-
     public static IResult Json(object value, int statusCode = StatusCodes.Status200OK) =>
         Results.Json(value, contentType: ContentType, statusCode: statusCode);
 
@@ -15,5 +12,8 @@ internal static class SapResults
         Json(new SapErrorResponse(new SapErrorBody(code, new SapErrorMessage("en-us", message))), statusCode);
 
     public static IResult InvalidSession() =>
-        Error(StatusCodes.Status401Unauthorized, InvalidSessionCode, "Invalid session.");
+        Error(StatusCodes.Status401Unauthorized, SapErrorCodes.InvalidSession, "Invalid session.");
+
+    public static IResult NotFound() =>
+        Error(StatusCodes.Status404NotFound, SapErrorCodes.NotFound, "No matching records found (ODBC -2028)");
 }

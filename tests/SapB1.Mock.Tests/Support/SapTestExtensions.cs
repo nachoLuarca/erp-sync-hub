@@ -42,6 +42,23 @@ internal static class SapTestExtensions
         return client.SendAsync(request);
     }
 
+    /// <summary>GET con la cookie de sesión y, opcionalmente, la cabecera <c>Prefer</c>.</summary>
+    public static Task<HttpResponseMessage> GetWithSessionAsync(
+        this HttpClient client,
+        string url,
+        string sessionId,
+        string? prefer = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("Cookie", $"B1SESSION={sessionId}");
+        if (prefer is not null)
+        {
+            request.Headers.Add("Prefer", prefer);
+        }
+
+        return client.SendAsync(request);
+    }
+
     public static async Task<JsonDocument> ReadJsonAsync(this HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync());
 

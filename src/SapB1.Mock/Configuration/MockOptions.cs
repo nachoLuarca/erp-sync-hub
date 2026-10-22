@@ -24,6 +24,10 @@ internal sealed class MockOptions
     [Range(1, 1440)]
     public int SessionTimeoutMinutes { get; init; } = 30;
 
+    /// <summary>Tamaño de página por defecto de las colecciones (SAP usa 20).</summary>
+    [Range(1, 1000)]
+    public int DefaultPageSize { get; init; } = 20;
+
     /// <summary>Versión del Service Layer que se informa en el login.</summary>
     [Required]
     public string Version { get; init; } = string.Empty;

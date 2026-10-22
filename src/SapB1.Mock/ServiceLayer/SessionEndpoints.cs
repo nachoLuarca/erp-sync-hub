@@ -39,7 +39,7 @@ internal static class SessionEndpoints
 
         if (request is null)
         {
-            return SapResults.Error(StatusCodes.Status400BadRequest, -1, "Invalid JSON format.");
+            return SapResults.Error(StatusCodes.Status400BadRequest, SapErrorCodes.InvalidRequest, "Invalid JSON format.");
         }
 
         var expected = options.Value;
@@ -49,7 +49,7 @@ internal static class SessionEndpoints
 
         if (!valid)
         {
-            return SapResults.Error(StatusCodes.Status401Unauthorized, -304, "Fail to get DB credentials from B1SC.");
+            return SapResults.Error(StatusCodes.Status401Unauthorized, SapErrorCodes.InvalidCredentials, "Fail to get DB credentials from B1SC.");
         }
 
         var sessionId = sessions.Create();
