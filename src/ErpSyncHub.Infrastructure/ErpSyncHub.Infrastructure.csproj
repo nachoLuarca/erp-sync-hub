@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ErpSyncHub.Application\ErpSyncHub.Application.csproj" />
+    <ProjectReference Include="..\ErpSyncHub.Domain\ErpSyncHub.Domain.csproj" />
+    <ProjectReference Include="..\SapB1.Client\SapB1.Client.csproj" />
+  </ItemGroup>
+
+</Project>
+

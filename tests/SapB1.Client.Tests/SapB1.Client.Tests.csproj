@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SapB1.Client\SapB1.Client.csproj" />
+  </ItemGroup>
+
+</Project>
+

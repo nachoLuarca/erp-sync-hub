@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ErpSyncHub.Domain\ErpSyncHub.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
+
