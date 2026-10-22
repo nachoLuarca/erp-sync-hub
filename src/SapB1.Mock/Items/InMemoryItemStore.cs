@@ -23,6 +23,24 @@ internal sealed class InMemoryItemStore : IItemStore, IResettable
         }
     }
 
+    public bool Commit(string itemCode, string warehouseCode, decimal quantity)
+    {
+        lock (_gate)
+        {
+            if (!_items.TryGetValue(itemCode, out var item))
+            {
+                return false;
+            }
+
+            var warehouses = item.ItemWarehouseInfoCollection
+                .Select(w => w.WarehouseCode == warehouseCode ? w with { Committed = w.Committed + quantity } : w)
+                .ToList();
+
+            _items[itemCode] = item with { ItemWarehouseInfoCollection = warehouses };
+            return true;
+        }
+    }
+
     public void Reset()
     {
         lock (_gate)

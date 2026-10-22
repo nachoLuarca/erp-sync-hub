@@ -1,3 +1,5 @@
+using SapB1.Mock.ServiceLayer;
+
 namespace SapB1.Mock.BusinessPartners;
 
 /// <summary>Reglas de negocio mínimas para crear o modificar un socio de negocios.</summary>

@@ -3,6 +3,7 @@ using SapB1.Mock.Admin;
 using SapB1.Mock.BusinessPartners;
 using SapB1.Mock.Configuration;
 using SapB1.Mock.Items;
+using SapB1.Mock.Orders;
 using SapB1.Mock.ServiceLayer;
 using SapB1.Mock.Sessions;
 
@@ -28,6 +29,8 @@ internal static class MockServiceCollectionExtensions
         services.AddSingleton<ISessionStore, InMemorySessionStore>();
         services.AddResettableStore<IItemStore, InMemoryItemStore>();
         services.AddResettableStore<IBusinessPartnerStore, InMemoryBusinessPartnerStore>();
+        services.AddResettableStore<IOrderStore, InMemoryOrderStore>();
+        services.AddSingleton<OrderBuilder>();
 
         return services;
     }
@@ -54,6 +57,7 @@ internal static class MockServiceCollectionExtensions
         secured.MapLogout();
         secured.MapItems();
         secured.MapBusinessPartners();
+        secured.MapOrders();
 
         app.MapAdmin();
 

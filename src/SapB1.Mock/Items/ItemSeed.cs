@@ -1,3 +1,5 @@
+using SapB1.Mock.ServiceLayer;
+
 namespace SapB1.Mock.Items;
 
 /// <summary>
@@ -42,8 +44,8 @@ internal static class ItemSeed
         [.. Catalog.Select(entry => new Item(
             entry.Code,
             entry.Name,
-            Valid: "tYES",
-            Frozen: "tNO",
+            Valid: YesNo.Yes,
+            Frozen: YesNo.No,
             ItemPrices: [new ItemPrice(BasePriceList, entry.Price, Currency)],
             ItemWarehouseInfoCollection: [new ItemWarehouseInfo(DefaultWarehouse, entry.Stock, 0, 0)]))];
 }

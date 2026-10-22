@@ -1,3 +1,5 @@
+using SapB1.Mock.ServiceLayer;
+
 namespace SapB1.Mock.BusinessPartners;
 
 /// <summary>Socio de negocios (subconjunto del objeto <c>BusinessPartners</c> del Service Layer).</summary>
@@ -64,11 +66,4 @@ internal static class AddressTypes
         ShipTo,
         BillTo,
     };
-}
-
-/// <summary>Valores del enumerado <c>BoYesNoEnum</c> del Service Layer.</summary>
-internal static class YesNo
-{
-    public const string Yes = "tYES";
-    public const string No = "tNO";
 }
