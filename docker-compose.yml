@@ -1,0 +1,102 @@
+name: erp-sync-hub
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-erpsynchub}
+      POSTGRES_USER: ${POSTGRES_USER:-erpsynchub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env (ver .env.example)}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  sap-mock:
+    build:
+      context: .
+      dockerfile: src/SapB1.Mock/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${SAP_MOCK_PORT:-5100}:8080"
+
+  # --- Tienda WooCommerce (opcional): docker compose --profile tienda up -d ---
+  tienda-db:
+    image: mysql:8.4
+    profiles: [tienda]
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: ${WP_DB_PASSWORD:-}
+      MYSQL_RANDOM_ROOT_PASSWORD: "1"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        [ -n "$$MYSQL_PASSWORD" ] || { echo "Define WP_DB_PASSWORD en .env (ver .env.example)" >&2; exit 1; }
+        exec docker-entrypoint.sh mysqld
+    volumes:
+      - tienda-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  tienda:
+    image: wordpress:7-apache
+    profiles: [tienda]
+    restart: unless-stopped
+    depends_on:
+      tienda-db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: tienda-db
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${WP_DB_PASSWORD:-}
+    ports:
+      - "${WP_PORT:-8081}:80"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        [ -n "$$WORDPRESS_DB_PASSWORD" ] || { echo "Define WP_DB_PASSWORD en .env (ver .env.example)" >&2; exit 1; }
+        exec docker-entrypoint.sh apache2-foreground
+    volumes:
+      - tienda-files:/var/www/html
+
+  tienda-setup:
+    image: wordpress:cli
+    profiles: [tienda]
+    user: "33:33"
+    depends_on:
+      - tienda
+    restart: "no"
+    environment:
+      WORDPRESS_DB_HOST: tienda-db
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${WP_DB_PASSWORD:-}
+      WP_URL: http://localhost:${WP_PORT:-8081}
+      WP_ADMIN_USER: ${WP_ADMIN_USER:-admin}
+      WP_ADMIN_PASSWORD: ${WP_ADMIN_PASSWORD:-}
+      WP_ADMIN_EMAIL: ${WP_ADMIN_EMAIL:-admin@example.com}
+    volumes:
+      - tienda-files:/var/www/html
+      - ./docker/tienda/instalar-woocommerce.sh:/instalar-woocommerce.sh:ro
+    entrypoint: ["sh", "/instalar-woocommerce.sh"]
+
+volumes:
+  postgres-data:
+  tienda-db-data:
+  tienda-files:
