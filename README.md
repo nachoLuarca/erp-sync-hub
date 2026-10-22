@@ -100,6 +100,18 @@ dotnet format --verify-no-changes
 dotnet test
 ```
 
+#### Verificación en contenedor
+
+`scripts/test.ps1` ejecuta restore, build en Release, `dotnet format --verify-no-changes` y todos los tests dentro del contenedor `mcr.microsoft.com/dotnet/sdk:10.0`, igual que CI. Es la forma recomendada de correr los tests en Windows con Smart App Control activo, que impide a `testhost.exe` cargar los ensamblados recién compilados.
+
+```powershell
+./scripts/test.ps1                                              # verificación completa
+./scripts/test.ps1 -Filter "FullyQualifiedName~SapB1.Client"    # solo algunos tests
+./scripts/test.ps1 -SkipFormat                                  # sin verificar el formato
+```
+
+Requiere Docker en ejecución. El repositorio se monta como solo lectura y el script trabaja sobre una copia, de modo que no altera tus carpetas `bin/` y `obj/`. La caché de NuGet se conserva en el volumen Docker `erp-sync-hub-nuget`. El código de salida es distinto de 0 si algún paso falla.
+
 ## Estado por fase
 
 | Fase | Entregable | Versión | Estado |
