@@ -24,7 +24,7 @@ internal static class BusinessPartnerEndpoints
         securedServiceLayer.MapGet(
             $"/{EntitySet}('{{cardCode}}')",
             (HttpContext http, string cardCode, IBusinessPartnerStore store) =>
-                store.Find(cardCode) is { } partner
+                store.Find(ODataKey.Unescape(cardCode)) is { } partner
                     ? ODataResults.Entity(http, EntitySet, SapJson.ToNode(partner))
                     : SapResults.NotFound());
 
@@ -70,6 +70,7 @@ internal static class BusinessPartnerEndpoints
         IBusinessPartnerStore store,
         CancellationToken cancellationToken)
     {
+        cardCode = ODataKey.Unescape(cardCode);
         var existing = store.Find(cardCode);
         if (existing is null)
         {

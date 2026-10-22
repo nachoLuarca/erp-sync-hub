@@ -23,7 +23,7 @@ internal static class ItemEndpoints
         securedServiceLayer.MapGet(
             $"/{EntitySet}('{{itemCode}}')",
             (HttpContext http, string itemCode, IItemStore store) =>
-                store.Find(itemCode) is { } item
+                store.Find(ODataKey.Unescape(itemCode)) is { } item
                     ? ODataResults.Entity(http, EntitySet, SapJson.ToNode(item))
                     : SapResults.NotFound());
     }

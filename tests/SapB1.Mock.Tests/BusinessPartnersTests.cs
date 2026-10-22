@@ -93,6 +93,20 @@ public sealed class BusinessPartnersTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task Las_claves_con_comilla_simple_se_escriben_duplicadas_en_la_URL()
+    {
+        await Post(new { CardCode = "O'BRIEN", CardName = "Con comilla" });
+
+        var get = await _client.GetWithSessionAsync($"{Collection}('O''BRIEN')", _sessionId);
+        var patch = await Patch("O''BRIEN", new { CardName = "Modificado" });
+
+        get.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var body = await get.ReadJsonAsync();
+        body.RootElement.GetProperty("CardCode").GetString().ShouldBe("O'BRIEN");
+        patch.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
     public async Task Post_crea_el_socio_con_valores_por_defecto_y_responde_201()
     {
         var response = await Post(new { CardCode = "WEB0001", CardName = "Cliente Web" });
