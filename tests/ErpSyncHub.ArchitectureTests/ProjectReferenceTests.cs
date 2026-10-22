@@ -10,21 +10,25 @@ namespace ErpSyncHub.ArchitectureTests;
 /// </summary>
 public class ProjectReferenceTests
 {
-    public static TheoryData<string, string[]> AllowedReferences => new()
+    public static TheoryData<string, string, string[]> AllowedReferences => new()
     {
-        { Layers.Domain, [] },
-        { Layers.Application, [Layers.Domain] },
-        { Layers.Infrastructure, [Layers.Application, Layers.Domain, Layers.SapClient] },
-        { Layers.Api, [Layers.Application, Layers.Infrastructure] },
-        { Layers.SapClient, [] },
-        { Layers.SapMock, [] },
+        { "src", Layers.Domain, [] },
+        { "src", Layers.Application, [Layers.Domain] },
+        { "src", Layers.Infrastructure, [Layers.Application, Layers.Domain, Layers.SapClient] },
+        { "src", Layers.Api, [Layers.Application, Layers.Infrastructure] },
+        { "src", Layers.SapClient, [] },
+        { "src", Layers.SapMock, [] },
+        { "tests", Layers.UnitTests, [Layers.Domain, Layers.Application] },
+        { "tests", Layers.IntegrationTests, [Layers.Api, Layers.Infrastructure] },
+        { "tests", Layers.SapMockTests, [Layers.SapMock] },
+        { "tests", Layers.SapClientTests, [Layers.SapClient, Layers.SapMock] },
     };
 
     [Theory]
     [MemberData(nameof(AllowedReferences))]
-    public void Cada_proyecto_solo_referencia_a_los_proyectos_permitidos(string project, string[] allowed)
+    public void Cada_proyecto_solo_referencia_a_los_proyectos_permitidos(string folder, string project, string[] allowed)
     {
-        var actual = ReadProject(project)
+        var actual = ReadProject(folder, project)
             .Descendants("ProjectReference")
             .Select(reference => reference.Attribute("Include")!.Value.Replace('\\', '/'))
             .Select(include => Path.GetFileNameWithoutExtension(include)!)
@@ -37,14 +41,14 @@ public class ProjectReferenceTests
     [Fact]
     public void Domain_no_tiene_paquetes_NuGet()
     {
-        var packages = ReadProject(Layers.Domain).Descendants("PackageReference").ToList();
+        var packages = ReadProject("src", Layers.Domain).Descendants("PackageReference").ToList();
 
         packages.ShouldBeEmpty("Domain no admite dependencias externas");
     }
 
-    private static XDocument ReadProject(string project)
+    private static XDocument ReadProject(string folder, string project)
     {
-        var path = Path.Combine(FindRepositoryRoot(), "src", project, $"{project}.csproj");
+        var path = Path.Combine(FindRepositoryRoot(), folder, project, $"{project}.csproj");
         return XDocument.Load(path);
     }
 
