@@ -16,8 +16,11 @@ internal static class ODataFilterParser
     private static readonly string[] Functions = ["startswith", "endswith", "contains", "substringof"];
 
     /// <param name="filter">Valor de <c>$filter</c>.</param>
-    /// <param name="knownProperties">Propiedades válidas de la entidad; cualquier otra es un error.</param>
-    public static Func<JsonObject, bool> Parse(string filter, IReadOnlySet<string> knownProperties)
+    /// <param name="knownProperties">
+    /// Propiedades válidas de la entidad; cualquier otra es un error. Si es <see langword="null"/> (colección vacía,
+    /// de la que no se pueden inferir) solo se valida la sintaxis.
+    /// </param>
+    public static Func<JsonObject, bool> Parse(string filter, IReadOnlySet<string>? knownProperties)
     {
         var parser = new Parser(Tokenize(filter), knownProperties);
         var predicate = parser.ParseOr();
@@ -127,7 +130,7 @@ internal static class ODataFilterParser
         throw new ODataQueryException("Unterminated string literal in $filter.");
     }
 
-    private sealed class Parser(List<Token> tokens, IReadOnlySet<string> knownProperties)
+    private sealed class Parser(List<Token> tokens, IReadOnlySet<string>? knownProperties)
     {
         private int _position;
 
@@ -273,7 +276,7 @@ internal static class ODataFilterParser
                     return _ => null;
 
                 case TokenKind.Identifier:
-                    if (!knownProperties.Contains(token.Text))
+                    if (knownProperties is not null && !knownProperties.Contains(token.Text))
                     {
                         throw new ODataQueryException($"Property '{token.Text}' is invalid.");
                     }

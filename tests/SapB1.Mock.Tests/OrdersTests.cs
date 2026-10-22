@@ -168,6 +168,27 @@ public sealed class OrdersTests : IAsyncLifetime, IDisposable
         body.RootElement.GetProperty("value").GetArrayLength().ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData("$filter=NumAtCard eq 'WOO-1'")]
+    [InlineData("$filter=NumAtCard eq 'WOO-1'&$orderby=DocEntry desc&$select=DocEntry&$top=1")]
+    [InlineData("$inlinecount=allpages")]
+    public async Task Consultar_una_coleccion_vacia_con_opciones_responde_200_sin_filas(string query)
+    {
+        var response = await _client.GetWithSessionAsync($"{Collection}?{query}", _sessionId);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var body = await response.ReadJsonAsync();
+        body.RootElement.GetProperty("value").GetArrayLength().ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Un_filtro_con_sintaxis_invalida_sobre_una_coleccion_vacia_igual_responde_400()
+    {
+        var response = await _client.GetWithSessionAsync($"{Collection}?$filter=NumAtCard eq", _sessionId);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
     [Fact]
     public async Task Filter_por_NumAtCard_permite_detectar_pedidos_ya_enviados()
     {

@@ -63,7 +63,8 @@ internal static partial class ODataResults
 
         if (query.TryGetValue("$filter", out var filterValues) && !string.IsNullOrWhiteSpace(filterValues[0]))
         {
-            var predicate = ODataFilterParser.Parse(filterValues[0]!, known);
+            // De una colección vacía no se pueden inferir las propiedades válidas: solo se valida la sintaxis.
+            var predicate = ODataFilterParser.Parse(filterValues[0]!, known.Count == 0 ? null : known);
             result = result.Where(predicate);
         }
 
