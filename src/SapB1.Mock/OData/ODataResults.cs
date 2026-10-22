@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using SapB1.Mock.ServiceLayer;
@@ -14,15 +13,6 @@ namespace SapB1.Mock.OData;
 /// </summary>
 internal static partial class ODataResults
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNamingPolicy = null,
-    };
-
-    /// <summary>Convierte una entidad a su representación JSON con nombres PascalCase.</summary>
-    public static JsonObject ToNode<T>(T entity) =>
-        JsonSerializer.SerializeToNode(entity, SerializerOptions)!.AsObject();
-
     public static IResult Collection(
         HttpContext http,
         string entitySet,
@@ -39,7 +29,7 @@ internal static partial class ODataResults
         }
     }
 
-    public static IResult Entity(HttpContext http, string entitySet, JsonObject row)
+    public static IResult Entity(HttpContext http, string entitySet, JsonObject row, int statusCode = StatusCodes.Status200OK)
     {
         try
         {
@@ -52,7 +42,7 @@ internal static partial class ODataResults
                 body[property.Key] = property.Value?.DeepClone();
             }
 
-            return SapResults.Json(body);
+            return SapResults.Json(body, statusCode);
         }
         catch (ODataQueryException exception)
         {

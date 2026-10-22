@@ -17,14 +17,14 @@ internal static class ItemEndpoints
                 ODataResults.Collection(
                     http,
                     EntitySet,
-                    [.. store.GetAll().Select(ODataResults.ToNode)],
+                    [.. store.GetAll().Select(SapJson.ToNode)],
                     options.Value.DefaultPageSize));
 
         securedServiceLayer.MapGet(
             $"/{EntitySet}('{{itemCode}}')",
             (HttpContext http, string itemCode, IItemStore store) =>
                 store.Find(itemCode) is { } item
-                    ? ODataResults.Entity(http, EntitySet, ODataResults.ToNode(item))
+                    ? ODataResults.Entity(http, EntitySet, SapJson.ToNode(item))
                     : SapResults.NotFound());
     }
 }

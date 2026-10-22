@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SapB1.Mock.Admin;
+using SapB1.Mock.BusinessPartners;
 using SapB1.Mock.Configuration;
 using SapB1.Mock.Items;
 using SapB1.Mock.ServiceLayer;
@@ -26,6 +27,7 @@ internal static class MockServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ISessionStore, InMemorySessionStore>();
         services.AddResettableStore<IItemStore, InMemoryItemStore>();
+        services.AddResettableStore<IBusinessPartnerStore, InMemoryBusinessPartnerStore>();
 
         return services;
     }
@@ -51,6 +53,7 @@ internal static class MockServiceCollectionExtensions
         var secured = serviceLayer.MapGroup(string.Empty).AddEndpointFilter<SessionRequiredFilter>();
         secured.MapLogout();
         secured.MapItems();
+        secured.MapBusinessPartners();
 
         app.MapAdmin();
 

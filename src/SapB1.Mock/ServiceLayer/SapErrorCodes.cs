@@ -12,6 +12,9 @@ internal static class SapErrorCodes
     /// <summary>Solicitud o consulta OData mal formada (HTTP 400). Aproximado.</summary>
     public const int InvalidRequest = -1;
 
+    /// <summary>Propiedad inexistente en el cuerpo de la solicitud (HTTP 400). Aproximado.</summary>
+    public const int InvalidProperty = -1000;
+
     /// <summary>Error genérico de validación de negocio (HTTP 400). Aproximado.</summary>
     public const int Validation = -10;
 
