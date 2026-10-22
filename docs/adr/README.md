@@ -8,6 +8,8 @@ Cada decisión relevante se documenta en un ADR numerado e inmutable: si una dec
 | [0002](0002-clean-architecture.md) | Clean Architecture con regla de dependencias verificada | Aceptada |
 | [0003](0003-postgresql-como-cola.md) | PostgreSQL como cola de jobs | Aceptada |
 | [0004](0004-sap-simulado-segun-contrato-service-layer.md) | SAP simulado según el contrato del Service Layer | Aceptada |
+| [0005](0005-sesion-del-service-layer.md) | Sesión del Service Layer: login perezoso y renovación reactiva | Aceptada |
+| [0006](0006-excepciones-tipadas-en-sapb1-client.md) | Excepciones tipadas en SapB1.Client | Aceptada |
 
 ## Plantilla
 

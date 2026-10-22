@@ -16,6 +16,11 @@ internal static class Layers
     public const string SapClient = "SapB1.Client";
     public const string SapMock = "SapB1.Mock";
 
+    public const string UnitTests = "ErpSyncHub.UnitTests";
+    public const string IntegrationTests = "ErpSyncHub.IntegrationTests";
+    public const string SapMockTests = "SapB1.Mock.Tests";
+    public const string SapClientTests = "SapB1.Client.Tests";
+
     public static Assembly Load(string name) => name switch
     {
         Domain => ErpSyncHub.Domain.AssemblyReference.Assembly,
