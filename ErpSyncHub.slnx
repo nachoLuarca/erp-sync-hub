@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ErpSyncHub.Api/ErpSyncHub.Api.csproj" />
+    <Project Path="src/ErpSyncHub.Application/ErpSyncHub.Application.csproj" />
+    <Project Path="src/ErpSyncHub.Domain/ErpSyncHub.Domain.csproj" />
+    <Project Path="src/ErpSyncHub.Infrastructure/ErpSyncHub.Infrastructure.csproj" />
+    <Project Path="src/SapB1.Client/SapB1.Client.csproj" />
+    <Project Path="src/SapB1.Mock/SapB1.Mock.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ErpSyncHub.ArchitectureTests/ErpSyncHub.ArchitectureTests.csproj" />
+    <Project Path="tests/ErpSyncHub.IntegrationTests/ErpSyncHub.IntegrationTests.csproj" />
+    <Project Path="tests/ErpSyncHub.UnitTests/ErpSyncHub.UnitTests.csproj" />
+    <Project Path="tests/SapB1.Client.Tests/SapB1.Client.Tests.csproj" />
+  </Folder>
+</Solution>
