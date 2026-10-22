@@ -16,6 +16,9 @@ public interface ISapB1Client
     /// <summary>Clientes y proveedores.</summary>
     IBusinessPartnersApi BusinessPartners { get; }
 
+    /// <summary>Órdenes de venta.</summary>
+    IOrdersApi Orders { get; }
+
     /// <summary>
     /// Cierra la sesión en SAP. Es opcional: SAP también cierra las sesiones por inactividad.
     /// La siguiente llamada iniciará una sesión nueva. Sin sesión abierta, no hace nada.

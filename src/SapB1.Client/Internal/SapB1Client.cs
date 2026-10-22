@@ -11,11 +11,14 @@ internal sealed class SapB1Client : ISapB1Client
         _transport = new SapB1Transport(http, store, options.Value.PageSize);
         Items = new ItemsApi(_transport);
         BusinessPartners = new BusinessPartnersApi(_transport);
+        Orders = new OrdersApi(_transport);
     }
 
     public IItemsApi Items { get; }
 
     public IBusinessPartnersApi BusinessPartners { get; }
+
+    public IOrdersApi Orders { get; }
 
     public Task LogoutAsync(CancellationToken cancellationToken = default) =>
         _transport.LogoutAsync(cancellationToken);
