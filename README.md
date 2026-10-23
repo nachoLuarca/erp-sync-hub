@@ -75,6 +75,7 @@ docker compose up -d --build
 # 3. La API: necesita la cadena de conexión a la base de datos (con la contraseña de tu .env)
 export Database__ConnectionString="Host=localhost;Port=5432;Database=erpsynchub;Username=erpsynchub;Password=<POSTGRES_PASSWORD>"
 export Database__MigrateOnStartup=true      # aplica las migraciones al iniciar (solo desarrollo)
+export Webhooks__WooCommerce__Secret="<mínimo 16 caracteres; el mismo que el secreto del webhook en WooCommerce>"
 dotnet run --project src/ErpSyncHub.Api
 ```
 

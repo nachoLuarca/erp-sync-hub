@@ -10,6 +10,10 @@
     <PackageVersion Include="Scalar.AspNetCore" Version="2.18.2" />
   </ItemGroup>
 
+  <ItemGroup Label="Aplicación">
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.13" />
+  </ItemGroup>
+
   <ItemGroup Label="Persistencia">
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.13" />
