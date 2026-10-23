@@ -27,13 +27,12 @@ services:
     ports:
       - "${SAP_MOCK_PORT:-5100}:8080"
 
-  # --- El hub (perfil opcional): docker compose --profile hub up -d --build ---
+  # --- El hub: API de webhooks y worker. Se configura solo con variables de entorno. ---
   # Necesita en .env, como mínimo, POSTGRES_PASSWORD y WC_WEBHOOK_SECRET (ver .env.example).
   hub:
     build:
       context: .
       dockerfile: src/ErpSyncHub.Api/Dockerfile
-    profiles: [hub]
     restart: unless-stopped
     depends_on:
       postgres:
@@ -41,9 +40,9 @@ services:
       sap-mock:
         condition: service_healthy
     environment:
-      Database__ConnectionString: Host=postgres;Port=5432;Database=${POSTGRES_DB:-erpsynchub};Username=${POSTGRES_USER:-erpsynchub};Password=${POSTGRES_PASSWORD:-}
+      Database__ConnectionString: Host=postgres;Port=5432;Database=${POSTGRES_DB:-erpsynchub};Username=${POSTGRES_USER:-erpsynchub};Password=${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env (ver .env.example)}
       Database__MigrateOnStartup: "true"
-      Webhooks__WooCommerce__Secret: ${WC_WEBHOOK_SECRET:-}
+      Webhooks__WooCommerce__Secret: ${WC_WEBHOOK_SECRET:?Define WC_WEBHOOK_SECRET en .env (ver .env.example)}
       SAP__BaseUrl: http://sap-mock:8080
       SAP__CompanyDb: ${SAP_COMPANY_DB:-SBODemoCL}
       SAP__UserName: ${SAP_USER_NAME:-manager}

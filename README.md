@@ -70,7 +70,7 @@ Requisitos: [.NET SDK 10](https://dotnet.microsoft.com/download) y Docker.
 cp .env.example .env        # y completa los valores marcados como OBLIGATORIO
 
 # 2. Infraestructura: PostgreSQL y SAP simulado
-docker compose up -d --build        # solo PostgreSQL y el SAP simulado; el hub y la tienda tienen sus propios perfiles
+docker compose up -d --build        # PostgreSQL, el SAP simulado y el hub; la tienda es opcional (--profile tienda)
 
 # 3. La API: necesita la cadena de conexión a la base de datos (con la contraseña de tu .env)
 export Database__ConnectionString="Host=localhost;Port=5432;Database=erpsynchub;Username=erpsynchub;Password=<POSTGRES_PASSWORD>"
@@ -92,15 +92,15 @@ dotnet run --project src/ErpSyncHub.Api
 
 ### Prueba de punta a punta: WooCommerce → hub → SAP
 
-Con Docker Compose se levanta todo el flujo: PostgreSQL, el SAP simulado, el hub y una tienda WooCommerce real. Define en `.env` al menos `POSTGRES_PASSWORD`, `WP_DB_PASSWORD`, `WP_ADMIN_PASSWORD` y `WC_WEBHOOK_SECRET` (mínimo 16 caracteres; ver `.env.example`).
+Con Docker Compose se levanta todo el flujo: PostgreSQL, el SAP simulado y el hub (por defecto) y una tienda WooCommerce real (`--profile tienda`). Define en `.env` al menos `POSTGRES_PASSWORD`, `WP_DB_PASSWORD`, `WP_ADMIN_PASSWORD` y `WC_WEBHOOK_SECRET` (mínimo 16 caracteres; ver `.env.example`).
 
 ```bash
-# 1. El hub (se construye desde src/ErpSyncHub.Api/Dockerfile) y la tienda
-docker compose --profile hub --profile tienda up -d --build --wait hub tienda
+# 1. PostgreSQL, el SAP simulado, el hub (se construye desde src/ErpSyncHub.Api/Dockerfile) y la tienda
+docker compose --profile tienda up -d --build --wait
 
 # 2. Instala WordPress y WooCommerce, crea productos con SKU A00001, A00002 y A00010 (artículos del SAP simulado)
 #    y registra los webhooks order.created y order.updated hacia el hub
-docker compose --profile hub --profile tienda run --rm tienda-setup
+docker compose --profile tienda run --rm tienda-setup
 ```
 
 La tienda queda en `http://localhost:8081` (usuario `admin`). Haz una compra desde la tienda, o crea un pedido pagado desde la consola:
