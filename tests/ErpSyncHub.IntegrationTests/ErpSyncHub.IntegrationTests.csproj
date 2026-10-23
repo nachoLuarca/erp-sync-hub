@@ -1,9 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\ErpSyncHub.Api\ErpSyncHub.Api.csproj" />
     <ProjectReference Include="..\..\src\ErpSyncHub.Infrastructure\ErpSyncHub.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
-

@@ -44,6 +44,10 @@ $dockerArgs = @(
     'run', '--rm',
     '-v', "${repo}:/src:ro",
     '-v', 'erp-sync-hub-nuget:/root/.nuget/packages',
+    # Testcontainers levanta sus contenedores en el Docker del host (hermanos de este) y los alcanza por el puerto publicado.
+    '-v', '/var/run/docker.sock:/var/run/docker.sock',
+    '--add-host', 'host.docker.internal:host-gateway',
+    '-e', 'TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal',
     '-e', 'DOTNET_NOLOGO=true',
     '-e', 'DOTNET_CLI_TELEMETRY_OPTOUT=true',
     '-e', 'DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true',

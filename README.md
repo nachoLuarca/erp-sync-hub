@@ -112,6 +112,10 @@ dotnet test
 
 Requiere Docker en ejecución. El repositorio se monta como solo lectura y el script trabaja sobre una copia, de modo que no altera tus carpetas `bin/` y `obj/`. La caché de NuGet se conserva en el volumen Docker `erp-sync-hub-nuget`. El código de salida es distinto de 0 si algún paso falla.
 
+Los tests de integración usan [Testcontainers](https://dotnet.testcontainers.org/) con un PostgreSQL real. Para que funcionen desde dentro del contenedor, el script monta el socket del Docker del host (`/var/run/docker.sock`): los contenedores de prueba se crean como "hermanos" en tu Docker y los tests los alcanzan por `host.docker.internal`. Montar el socket da al contenedor de tests control sobre el Docker del host, lo que es aceptable en una máquina de desarrollo; no ejecutes el script con código que no sea de confianza.
+
+En CI (GitHub Actions) no hace falta nada de esto: el runner ya tiene Docker y los tests corren directamente en él.
+
 ## Estado por fase
 
 | Fase | Entregable | Versión | Estado |
