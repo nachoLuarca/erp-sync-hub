@@ -1,4 +1,5 @@
 using ErpSyncHub.Api.Problems;
+using ErpSyncHub.Api.Sync;
 using ErpSyncHub.Api.Webhooks;
 using ErpSyncHub.Application;
 using ErpSyncHub.Infrastructure;
@@ -12,6 +13,7 @@ builder.Services.AddApiProblemDetails();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 builder.Services.AddWooCommerceWebhooks(builder.Configuration);
+builder.Services.AddOrderSync(builder.Configuration);
 
 var app = builder.Build();
 

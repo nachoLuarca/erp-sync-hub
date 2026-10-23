@@ -1,6 +1,8 @@
 using ErpSyncHub.Application.Jobs;
 using ErpSyncHub.Application.Sap;
+using ErpSyncHub.Application.Sync;
 using ErpSyncHub.Infrastructure.Jobs;
+using ErpSyncHub.Infrastructure.Mappings;
 using ErpSyncHub.Infrastructure.Persistence;
 using ErpSyncHub.Infrastructure.Sap;
 using Microsoft.Extensions.Configuration;
@@ -29,6 +31,7 @@ public static class DependencyInjection
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IJobQueue, PostgresJobQueue>();
+        services.AddScoped<IMappingStore, MappingStore>();
 
         // Debe registrarse antes que cualquier servicio en segundo plano que use la base de datos.
         services.AddHostedService<DatabaseMigrationHostedService>();
