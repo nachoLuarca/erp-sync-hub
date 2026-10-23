@@ -21,7 +21,7 @@ public class ApiStartupTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Sin_MigrateOnStartup_la_Api_arranca_sin_tocar_el_esquema()
+    public async Task Sin_MigrateOnStartup_la_Api_arranca_sin_tocar_el_esquema_y_el_health_avisa_que_faltan_migraciones()
     {
         var connectionString = await postgres.CreateEmptyDatabaseAsync();
         await using var factory = ApiFactory.Create(connectionString, migrateOnStartup: false);
@@ -29,7 +29,8 @@ public class ApiStartupTests(PostgresFixture postgres)
         using var client = factory.CreateClient();
         var response = await client.GetAsync("/health");
 
-        response.IsSuccessStatusCode.ShouldBeTrue();
+        response.StatusCode.ShouldBe(System.Net.HttpStatusCode.ServiceUnavailable);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("migraciones");
         (await TableCountAsync(connectionString)).ShouldBe(0);
     }
 
