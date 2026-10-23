@@ -3,6 +3,7 @@ using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Domain.Common;
 using ErpSyncHub.Domain.Customers;
 using ErpSyncHub.Domain.Jobs;
+using Microsoft.Extensions.Options;
 using SapB1.Client;
 using SapB1.Client.Models;
 
@@ -13,14 +14,15 @@ namespace ErpSyncHub.Infrastructure.Sap;
 /// <see cref="Result"/> (ADR 0006): un rechazo de SAP es definitivo, mientras que un error del servidor, un problema de
 /// sesión, de red o un tiempo de espera agotado son pasajeros y la Fase 4 los reintentará.
 /// </summary>
-internal sealed class SapGateway(ISapB1Client sap) : ISapGateway
+internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> options) : ISapGateway
 {
     public Task<Result<SapCustomer?>> FindCustomerByTaxIdAsync(Rut taxId, CancellationToken cancellationToken)
     {
-        // El RUT puede estar guardado con o sin puntos según cómo se haya ingresado en SAP.
+        // El RUT se busca en el formato con que SAP lo guarda (SAP:TaxIdFormat), no en cualquiera: así una discrepancia
+        // de configuración no crea clientes duplicados en silencio.
         var filter = SapFilter.And(
             SapFilter.Equal("CardType", CardTypes.Customer),
-            $"{SapFilter.Equal("FederalTaxID", taxId.Formatted)} or {SapFilter.Equal("FederalTaxID", taxId.Normalized)}");
+            SapFilter.Equal("FederalTaxID", taxId.Format(options.Value.TaxIdFormat)));
 
         return FindCustomerAsync(filter, cancellationToken);
     }
@@ -48,7 +50,7 @@ internal sealed class SapGateway(ISapB1Client sap) : ISapGateway
             {
                 try
                 {
-                    return ToCustomer(await sap.BusinessPartners.CreateAsync(ToRequest(customer), cancellationToken));
+                    return ToCustomer(await sap.BusinessPartners.CreateAsync(ToRequest(customer, options.Value.TaxIdFormat), cancellationToken));
                 }
                 catch (SapB1ApiException exception) when (exception.IsAlreadyExists)
                 {
@@ -241,12 +243,12 @@ internal sealed class SapGateway(ISapB1Client sap) : ISapGateway
     private static SapOrderReference ToReference(Order order) =>
         new(order.DocEntry, order.DocNum, order.CardCode, order.DocTotal);
 
-    private static CreateBusinessPartnerRequest ToRequest(NewSapCustomer customer) => new()
+    private static CreateBusinessPartnerRequest ToRequest(NewSapCustomer customer, TaxIdFormat taxIdFormat) => new()
     {
         CardCode = customer.CardCode,
         CardName = customer.CardName,
         CardType = CardTypes.Customer,
-        FederalTaxID = customer.TaxId?.Formatted,
+        FederalTaxID = customer.TaxId?.Format(taxIdFormat),
         EmailAddress = customer.Email,
         Phone1 = customer.Phone,
         BPAddresses =

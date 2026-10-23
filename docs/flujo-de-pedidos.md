@@ -75,6 +75,7 @@ Todo se configura por variables de entorno (`:` se escribe `__`); ver también [
 | `Webhooks__WooCommerce__MaxBodyBytes` | `1048576` | Tamaño máximo del cuerpo. |
 | `SAP__BaseUrl`, `SAP__CompanyDb`, `SAP__UserName`, `SAP__Password` | — (obligatorias) | Conexión al Service Layer ([guía del cliente](../src/SapB1.Client/README.md)). |
 | `SAP__RequestTimeout` | `00:00:30` | Tiempo de espera de cada llamada a SAP. |
+| `SAP__TaxIdFormat` | `WithDots` | Formato del RUT en `FederalTaxID`: `WithDots` (`12.345.678-5`) o `WithoutDots` (`12345678-5`). Se usa al buscar y al crear clientes. |
 | `Sync__WooCommerce__TaxIdMetaKey` | `_billing_rut` | Metadato del pedido que trae el RUT. Vacío lo desactiva. |
 | `Sync__WooCommerce__TimeZoneId` | `America/Santiago` | Zona horaria de la tienda, para fechar la orden. |
 | `Worker__Enabled` | `true` | Apaga el procesamiento de jobs (la Api igual recibe webhooks). |

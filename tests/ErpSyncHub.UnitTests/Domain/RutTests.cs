@@ -80,6 +80,28 @@ public class RutTests
         rut.ToString().ShouldBe("12345678-5");
     }
 
+    [Theory]
+    [InlineData("12.345.678-5", TaxIdFormat.WithDots, "12.345.678-5")]
+    [InlineData("12.345.678-5", TaxIdFormat.WithoutDots, "12345678-5")]
+    [InlineData("6-K", TaxIdFormat.WithDots, "6-K")]
+    [InlineData("6-K", TaxIdFormat.WithoutDots, "6-K")]
+    [InlineData("1.000.000-9", TaxIdFormat.WithDots, "1.000.000-9")]
+    [InlineData("99.999.999-9", TaxIdFormat.WithoutDots, "99999999-9")]
+    public void Format_escribe_el_RUT_en_el_formato_pedido_siempre_con_guion_y_digito_verificador(string input, TaxIdFormat format, string expected)
+    {
+        Rut.TryParse(input, out var rut).ShouldBeTrue();
+
+        rut.Format(format).ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Format_rechaza_un_formato_desconocido()
+    {
+        Rut.TryParse("12.345.678-5", out var rut).ShouldBeTrue();
+
+        Should.Throw<ArgumentOutOfRangeException>(() => rut.Format((TaxIdFormat)99));
+    }
+
     [Fact]
     public void Un_RUT_corto_se_formatea_sin_puntos_de_mas()
     {

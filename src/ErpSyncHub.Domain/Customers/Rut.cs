@@ -2,6 +2,16 @@ using System.Globalization;
 
 namespace ErpSyncHub.Domain.Customers;
 
+/// <summary>Cómo se escribe un RUT en un sistema externo. Siempre lleva guion y dígito verificador.</summary>
+public enum TaxIdFormat
+{
+    /// <summary>Con puntos: <c>12.345.678-5</c>.</summary>
+    WithDots,
+
+    /// <summary>Sin puntos: <c>12345678-5</c>.</summary>
+    WithoutDots,
+}
+
 /// <summary>
 /// Rol Único Tributario chileno, validado con su dígito verificador (módulo 11).
 /// </summary>
@@ -27,6 +37,14 @@ public readonly record struct Rut
     /// <summary>Forma habitual con puntos: <c>12.345.678-5</c>.</summary>
     public string Formatted =>
         Number.ToString("N0", CultureInfo.InvariantCulture).Replace(',', '.') + $"-{CheckDigit}";
+
+    /// <summary>El RUT en el formato indicado, para enviarlo a un sistema externo o buscarlo en él.</summary>
+    public string Format(TaxIdFormat format) => format switch
+    {
+        TaxIdFormat.WithDots => Formatted,
+        TaxIdFormat.WithoutDots => Normalized,
+        _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Formato de RUT desconocido."),
+    };
 
     public override string ToString() => Normalized;
 

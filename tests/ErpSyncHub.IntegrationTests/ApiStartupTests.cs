@@ -150,6 +150,30 @@ public class ApiStartupTests(PostgresFixture postgres)
         exception.Message.ShouldContain("zona horaria");
     }
 
+    [Fact]
+    public void Un_formato_de_RUT_desconocido_impide_arrancar_y_dice_que_variable_corregir()
+    {
+        using var factory = ApiFactory.Create(
+            "Host=localhost",
+            configure: builder => builder.UseSetting("SAP:TaxIdFormat", "ConGuionBajo"));
+
+        var exception = Should.Throw<Exception>(() => factory.CreateClient());
+
+        exception.ToString().ShouldContain("TaxIdFormat");
+    }
+
+    [Theory]
+    [InlineData("WithDots")]
+    [InlineData("WithoutDots")]
+    public void Los_dos_formatos_de_RUT_son_validos(string format)
+    {
+        using var factory = ApiFactory.Create(
+            "Host=localhost",
+            configure: builder => builder.UseSetting("SAP:TaxIdFormat", format));
+
+        Should.NotThrow(() => factory.CreateClient());
+    }
+
     private static async Task<long> TableCountAsync(string connectionString)
     {
         await using var connection = new NpgsqlConnection(connectionString);

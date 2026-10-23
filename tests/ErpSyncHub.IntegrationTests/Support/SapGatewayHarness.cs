@@ -29,10 +29,10 @@ internal sealed class SapGatewayHarness : IDisposable
     public SapMockHost Mock => _mock ?? throw new InvalidOperationException("Este arnés no usa el SAP simulado.");
 
     /// <summary>Adaptador conectado al SAP simulado en memoria.</summary>
-    public static SapGatewayHarness AgainstMock(string password = SapCredentials.Password)
+    public static SapGatewayHarness AgainstMock(string password = SapCredentials.Password, string? taxIdFormat = null)
     {
         var mock = new SapMockHost();
-        var services = BaseServices(password);
+        var services = BaseServices(password, taxIdFormat);
         services.AddHttpClient(nameof(ISapB1Client)).ConfigurePrimaryHttpMessageHandler(mock.CreateHandler);
         return new SapGatewayHarness(services.BuildServiceProvider(), mock);
     }
@@ -40,7 +40,7 @@ internal sealed class SapGatewayHarness : IDisposable
     /// <summary>Adaptador conectado a un cliente de SAP sustituto, para provocar errores a voluntad.</summary>
     public static SapGatewayHarness WithClient(ISapB1Client client)
     {
-        var services = BaseServices(SapCredentials.Password);
+        var services = BaseServices(SapCredentials.Password, taxIdFormat: null);
         services.AddSingleton(client);
         return new SapGatewayHarness(services.BuildServiceProvider(), mock: null);
     }
@@ -51,17 +51,21 @@ internal sealed class SapGatewayHarness : IDisposable
         _mock?.Dispose();
     }
 
-    private static ServiceCollection BaseServices(string password)
+    private static ServiceCollection BaseServices(string password, string? taxIdFormat)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["SAP:BaseUrl"] = "http://localhost",
-                ["SAP:CompanyDb"] = SapCredentials.CompanyDb,
-                ["SAP:UserName"] = SapCredentials.UserName,
-                ["SAP:Password"] = password,
-            })
-            .Build();
+        var settings = new Dictionary<string, string?>
+        {
+            ["SAP:BaseUrl"] = "http://localhost",
+            ["SAP:CompanyDb"] = SapCredentials.CompanyDb,
+            ["SAP:UserName"] = SapCredentials.UserName,
+            ["SAP:Password"] = password,
+        };
+        if (taxIdFormat is not null)
+        {
+            settings["SAP:TaxIdFormat"] = taxIdFormat;
+        }
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
 
         var services = new ServiceCollection();
         services.AddLogging();

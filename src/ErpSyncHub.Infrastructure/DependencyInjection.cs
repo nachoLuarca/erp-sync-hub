@@ -60,6 +60,8 @@ public static class DependencyInjection
         ArgumentNullException.ThrowIfNull(configuration);
 
         services.AddSapB1Client(configuration);
+        services.AddOptions<SapGatewayOptions>().Bind(configuration.GetSection(SapB1Options.SectionName)).ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SapGatewayOptions>, SapGatewayOptionsValidator>());
         services.AddScoped<ISapGateway, SapGateway>();
         return services;
     }

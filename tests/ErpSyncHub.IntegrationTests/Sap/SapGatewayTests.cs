@@ -34,15 +34,70 @@ public class SapGatewayTests
     }
 
     [Fact]
-    public async Task Encuentra_al_cliente_aunque_SAP_guarde_el_RUT_sin_puntos()
+    public async Task Por_defecto_el_RUT_se_busca_con_puntos_y_no_encuentra_al_que_SAP_guarda_sin_ellos()
     {
         using var harness = SapGatewayHarness.AgainstMock();
         await harness.Client.BusinessPartners.CreateAsync(
-            new CreateBusinessPartnerRequest { CardCode = "C18765432-7", CardName = "Sin puntos", FederalTaxID = "18765432-7" });
+            new CreateBusinessPartnerRequest { CardCode = "C-SIN-PUNTOS", CardName = "Sin puntos", FederalTaxID = "18765432-7" });
 
         var result = await harness.Gateway.FindCustomerByTaxIdAsync(Rut("18.765.432-7"), CancellationToken.None);
 
-        result.Value.ShouldNotBeNull().CardCode.ShouldBe("C18765432-7");
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Con_el_formato_sin_puntos_busca_y_encuentra_al_cliente_guardado_sin_puntos()
+    {
+        using var harness = SapGatewayHarness.AgainstMock(taxIdFormat: "WithoutDots");
+        await harness.Client.BusinessPartners.CreateAsync(
+            new CreateBusinessPartnerRequest { CardCode = "C-SIN-PUNTOS", CardName = "Sin puntos", FederalTaxID = "18765432-7" });
+
+        var result = await harness.Gateway.FindCustomerByTaxIdAsync(Rut("18.765.432-7"), CancellationToken.None);
+
+        result.Value.ShouldNotBeNull().CardCode.ShouldBe("C-SIN-PUNTOS");
+    }
+
+    [Fact]
+    public async Task Con_el_formato_sin_puntos_ya_no_encuentra_a_los_clientes_guardados_con_puntos()
+    {
+        using var harness = SapGatewayHarness.AgainstMock(taxIdFormat: "WithoutDots");
+
+        // C00003 está en el SAP simulado como 12.345.678-5.
+        var result = await harness.Gateway.FindCustomerByTaxIdAsync(Rut("12.345.678-5"), CancellationToken.None);
+
+        result.Value.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("WithDots", "18.765.432-7")]
+    [InlineData("WithoutDots", "18765432-7")]
+    [InlineData("withoutdots", "18765432-7")]
+    public async Task Al_crear_un_cliente_el_RUT_se_envia_en_el_formato_configurado(string format, string expectedInSap)
+    {
+        using var harness = SapGatewayHarness.AgainstMock(taxIdFormat: format);
+        var customer = new NewSapCustomer("C18765432-7", "Valentina", Rut("18765432-7"), null, null, []);
+
+        var created = await harness.Gateway.EnsureCustomerAsync(customer, CancellationToken.None);
+
+        created.IsSuccess.ShouldBeTrue();
+        created.Value.TaxId.ShouldBe(expectedInSap);
+        (await harness.Client.BusinessPartners.GetAsync("C18765432-7")).ShouldNotBeNull().FederalTaxID.ShouldBe(expectedInSap);
+    }
+
+    [Theory]
+    [InlineData("WithDots")]
+    [InlineData("WithoutDots")]
+    public async Task Lo_que_el_hub_crea_siempre_lo_encuentra_en_el_mismo_formato(string format)
+    {
+        using var harness = SapGatewayHarness.AgainstMock(taxIdFormat: format);
+        await harness.Gateway.EnsureCustomerAsync(
+            new NewSapCustomer("C18765432-7", "Valentina", Rut("18.765.432-7"), null, null, []),
+            CancellationToken.None);
+
+        var found = await harness.Gateway.FindCustomerByTaxIdAsync(Rut("18765432-7"), CancellationToken.None);
+
+        found.Value.ShouldNotBeNull().CardCode.ShouldBe("C18765432-7");
     }
 
     [Fact]

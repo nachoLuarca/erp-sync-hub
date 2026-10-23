@@ -29,7 +29,7 @@ Las validaciones que no necesitan SAP (sin líneas, SKU vacío, cantidad inváli
 La identidad del cliente en la tienda es su id (cliente registrado) o su correo normalizado (invitado). El orden de resolución es:
 
 1. Mapeo guardado en `customer_mappings` (`customer:4521` o `email:ana@example.com`).
-2. **RUT.** Si el pedido trae el RUT (metadato `Sync:WooCommerce:TaxIdMetaKey`, por defecto `_billing_rut`), se valida con el **dígito verificador (módulo 11)** antes de buscar o crear nada. Se busca en SAP por `FederalTaxID` (`LicTradNum`), entre los clientes (`cCustomer`), en sus dos formas habituales: con puntos (`12.345.678-5`) y sin ellos (`12345678-5`). Si hubiera varios, se elige el de menor `CardCode`, para que el resultado sea determinista.
+2. **RUT.** Si el pedido trae el RUT (metadato `Sync:WooCommerce:TaxIdMetaKey`, por defecto `_billing_rut`), se valida con el **dígito verificador (módulo 11)** antes de buscar o crear nada. Se busca en SAP por `FederalTaxID` (`LicTradNum`), entre los clientes (`cCustomer`), **en el formato configurado** en `SAP:TaxIdFormat` (ver más abajo). Si hubiera varios, se elige el de menor `CardCode`, para que el resultado sea determinista.
 3. **Correo**, si el pedido no trae RUT.
 4. Si no existe, **se crea** con un `CardCode` determinista.
 
@@ -48,7 +48,15 @@ El `CardCode` es **determinista**: el mismo cliente produce siempre el mismo có
 - Se descartó la numeración automática de SAP (serie `C00007`): no es determinista, y obligaría a depender de la búsqueda por RUT o correo para evitar duplicados.
 - Dos RUT distintos nunca colisionan. En el caso del invitado, 48 bits de hash hacen despreciable la colisión entre correos distintos, y un correo cambiado produce un cliente distinto, que es lo esperable.
 - El código no es secuencial ni informa el orden de alta; para eso están los campos de SAP. Un cliente existente en SAP (encontrado por RUT o correo) conserva su código original.
-- El RUT se guarda en `FederalTaxID` **con puntos**. Hay que validar con un SAP real que el campo y el formato coincidan con la configuración local.
+
+#### Formato del RUT en SAP
+
+Cada instalación de SAP guarda el RUT a su manera, así que el formato es configurable: `SAP:TaxIdFormat` (`SAP__TaxIdFormat`) vale `WithDots` (`12.345.678-5`, por defecto) o `WithoutDots` (`12345678-5`); un valor desconocido impide arrancar.
+
+- **La búsqueda es estricta**: solo compara con el formato configurado. Buscar en ambos formatos parece más tolerante, pero oculta la inconsistencia del maestro de clientes, y un RUT escrito con otro formato pasaría inadvertido hasta crear un cliente duplicado. Si el SAP real usa otro formato, se cambia la variable en vez de aceptar ambos.
+- **Al crear**, el cliente nuevo se guarda en ese mismo formato, de modo que lo que el hub crea siempre lo encuentra después.
+- El `CardCode` no depende de esta opción: siempre usa el RUT sin puntos.
+- Hay que validar con un SAP real que el campo y el formato coincidan con la configuración local.
 
 ### Precio y totales
 
