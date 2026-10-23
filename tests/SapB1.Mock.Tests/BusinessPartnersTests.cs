@@ -51,7 +51,7 @@ public sealed class BusinessPartnersTests : IAsyncLifetime, IDisposable
         partner.GetProperty("CardCode").GetString().ShouldBe("C00001");
         partner.GetProperty("CardName").GetString().ShouldBe("Constructora Los Andes SpA");
         partner.GetProperty("CardType").GetString().ShouldBe("cCustomer");
-        partner.GetProperty("FederalTaxID").GetString().ShouldBe("76.123.456-7");
+        partner.GetProperty("FederalTaxID").GetString().ShouldBe("76.123.456-0");
         partner.GetProperty("BPAddresses").GetArrayLength().ShouldBe(2);
         partner.GetProperty("BPAddresses")[0].GetProperty("AddressType").GetString().ShouldBe("bo_BillTo");
     }

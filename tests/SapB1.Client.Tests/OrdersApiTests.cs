@@ -245,7 +245,7 @@ public class OrdersApiTests
     {
         await using var harness = ClientHarness.AgainstMock();
         var client = harness.Client;
-        const string rut = "18.765.432-1";
+        const string rut = "18.765.432-7";
         const string wooOrderId = "WOO-5501";
 
         // 1. Buscar el cliente por RUT y crearlo si no existe.
