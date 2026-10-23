@@ -76,6 +76,10 @@ docker compose up -d --build
 export Database__ConnectionString="Host=localhost;Port=5432;Database=erpsynchub;Username=erpsynchub;Password=<POSTGRES_PASSWORD>"
 export Database__MigrateOnStartup=true      # aplica las migraciones al iniciar (solo desarrollo)
 export Webhooks__WooCommerce__Secret="<mínimo 16 caracteres; el mismo que el secreto del webhook en WooCommerce>"
+export SAP__BaseUrl="http://localhost:5100"            # el SAP simulado de Docker Compose
+export SAP__CompanyDb="SBODemoCL"
+export SAP__UserName="manager"
+export SAP__Password="manager"                          # credenciales ficticias del mock; con un SAP real, usa un gestor de secretos
 dotnet run --project src/ErpSyncHub.Api
 ```
 

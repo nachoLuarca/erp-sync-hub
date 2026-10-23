@@ -1,17 +1,20 @@
 using ErpSyncHub.Application.Jobs;
+using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Infrastructure.Jobs;
 using ErpSyncHub.Infrastructure.Persistence;
+using ErpSyncHub.Infrastructure.Sap;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using SapB1.Client;
 
 namespace ErpSyncHub.Infrastructure;
 
 /// <summary>Registro de los servicios de infraestructura.</summary>
 public static class DependencyInjection
 {
-    /// <summary>Registra la persistencia (PostgreSQL) y sus opciones, que se validan al iniciar la aplicación.</summary>
+    /// <summary>Registra la persistencia (PostgreSQL) y la integración con SAP. Las opciones se validan al iniciar.</summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -30,6 +33,19 @@ public static class DependencyInjection
         // Debe registrarse antes que cualquier servicio en segundo plano que use la base de datos.
         services.AddHostedService<DatabaseMigrationHostedService>();
 
+        return services.AddSapGateway(configuration);
+    }
+
+    /// <summary>
+    /// Registra el acceso a SAP: el cliente tipado, configurado con la sección <c>SAP</c> (variables <c>SAP__BaseUrl</c>,
+    /// <c>SAP__CompanyDb</c>, <c>SAP__UserName</c> y <c>SAP__Password</c>), y el adaptador que traduce sus excepciones a <c>Result</c>.
+    /// </summary>
+    public static IServiceCollection AddSapGateway(this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        services.AddSapB1Client(configuration);
+        services.AddScoped<ISapGateway, SapGateway>();
         return services;
     }
 }
