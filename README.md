@@ -69,10 +69,10 @@ Requisitos: [.NET SDK 10](https://dotnet.microsoft.com/download) y Docker.
 # 1. Configuración local (el archivo .env no se versiona)
 cp .env.example .env        # y completa los valores marcados como OBLIGATORIO
 
-# 2. Infraestructura: PostgreSQL y SAP simulado
+# 2. Entorno completo: PostgreSQL, SAP simulado, Seq y el hub (ya queda funcionando en http://localhost:5200)
 docker compose up -d --build        # PostgreSQL, el SAP simulado y el hub; la tienda es opcional (--profile tienda)
 
-# 3. La API: necesita la cadena de conexión a la base de datos (con la contraseña de tu .env)
+# 3. Opcional, para desarrollar: el hub desde el código (puerto 5210; apaga el contenedor `hub` si quieres un solo worker). Necesita la cadena de conexión a la base de datos (con la contraseña de tu .env)
 export Database__ConnectionString="Host=localhost;Port=5433;Database=erpsynchub;Username=erpsynchub;Password=<POSTGRES_PASSWORD>"
 export Database__MigrateOnStartup=true      # aplica las migraciones al iniciar (solo desarrollo)
 export Webhooks__WooCommerce__Secret="<mínimo 16 caracteres; el mismo que el secreto del webhook en WooCommerce>"
@@ -83,12 +83,43 @@ export SAP__Password="manager"                          # credenciales ficticias
 dotnet run --project src/ErpSyncHub.Api
 ```
 
-| Servicio | URL |
+### Servicios y puertos
+
+Los puertos del host se publican solo en `127.0.0.1` y se eligen para no chocar con los de otros proyectos habituales (PostgreSQL 5432, Redis 6379, SMTP 1025…). Cada uno se puede cambiar en `.env`. Entre contenedores no importan: se hablan por nombre de servicio y puerto interno (`postgres:5432`, `sap-mock:8080`, `seq:80`, `hub:8080`).
+
+| Servicio | En Docker | Con `dotnet run` | URL |
+|---|---|---|---|
+| API del hub (webhook, `/health`) | `5200` (`HUB_HOST_PORT`) | `5210` | http://localhost:5200/health |
+| Documentación de la API (Scalar) | — (solo en entorno `Development`) | `5210` | http://localhost:5210/scalar |
+| SAP simulado | `5201` (`SAP_MOCK_HOST_PORT`) | `5211` | http://localhost:5201/health |
+| Seq (logs estructurados) | `5202` (`SEQ_HOST_PORT`) | — | http://localhost:5202 |
+| Tienda WooCommerce (perfil `tienda`) | `5203` (`TIENDA_HOST_PORT`) | — | http://localhost:5203 |
+| PostgreSQL | `5433` (`POSTGRES_HOST_PORT`) | — | `localhost:5433` |
+| MySQL de la tienda | sin puerto en el host | — | solo desde la red de Compose |
+
+Seq corre sin autenticación porque es solo para desarrollo local: no lo expongas fuera de tu máquina. Para ver los logs de un pedido, filtra por `JobId = '<id del job>'`.
+
+#### Si un puerto está ocupado
+
+Compose falla con `port is already allocated`. Revisa qué lo usa y cambia la variable correspondiente en `.env`:
+
+```powershell
+Get-NetTCPConnection -LocalPort 5433 -ErrorAction SilentlyContinue   # PowerShell
+docker ps --format "table {{.Names}}\t{{.Ports}}"                    # contenedores que publican puertos
+```
+
+### Cómo levantar el entorno
+
+| Qué quieres | Comando |
 |---|---|
-| API | `http://localhost:5200/health` (Docker) · `http://localhost:5210/health` (`dotnet run`) |
-| Documentación (solo con `dotnet run`, entorno Development) | `http://localhost:5210/scalar` |
-| SAP simulado (Docker) | `http://localhost:5201/health` |
-| PostgreSQL | `localhost:5433` |
+| Todo lo del hub: PostgreSQL, SAP simulado, hub y Seq | `docker compose up -d --build --wait` |
+| Además, la tienda WooCommerce | `docker compose --profile tienda up -d --build --wait` y luego `docker compose --profile tienda run --rm tienda-setup` |
+| Solo la infraestructura, con el hub desde `dotnet run` | `docker compose up -d postgres sap-mock seq` y el bloque anterior (el hub queda en `5210`) |
+| Ver el estado | `docker compose ps` · `curl http://localhost:5200/health` |
+| Apagar (conserva los datos) | `docker compose down` |
+| Apagar y borrar volúmenes | `docker compose down -v` |
+
+Con el hub en `dotnet run`, para enviar sus logs a Seq define `Seq__ServerUrl=http://localhost:5202`; sin esa variable solo escribe en consola. Si además usas la tienda, apunta el webhook al hub del host con `HUB_WEBHOOK_URL=http://host.docker.internal:5210/webhooks/woocommerce/orders`.
 
 ### Prueba de punta a punta: WooCommerce → hub → SAP
 
