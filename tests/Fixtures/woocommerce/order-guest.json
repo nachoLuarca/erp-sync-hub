@@ -1,0 +1,42 @@
+{
+  "id": 5502,
+  "number": "5502",
+  "status": "completed",
+  "currency": "CLP",
+  "date_created_gmt": "2026-03-11T09:30:00",
+  "discount_total": "0",
+  "shipping_total": "0",
+  "total": "2990",
+  "total_tax": "0",
+  "customer_id": 0,
+  "customer_note": "",
+  "billing": {
+    "first_name": "",
+    "last_name": "",
+    "company": "Taller Los Aromos Ltda.",
+    "address_1": "Pasaje Los Aromos 45",
+    "address_2": "",
+    "city": "Ñuñoa",
+    "state": "RM",
+    "postcode": "",
+    "country": "CL",
+    "email": "Compras@LosAromos.example.com",
+    "phone": ""
+  },
+  "shipping": {},
+  "meta_data": [],
+  "line_items": [
+    {
+      "id": 310,
+      "name": "Huincha de medir 5 m",
+      "product_id": 91,
+      "variation_id": 0,
+      "quantity": 1,
+      "subtotal": "2990",
+      "total": "2990",
+      "total_tax": "0",
+      "sku": "A00010",
+      "price": 2990
+    }
+  ]
+}
