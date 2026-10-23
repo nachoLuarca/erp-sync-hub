@@ -1,3 +1,5 @@
+using ErpSyncHub.Application.Jobs;
+using ErpSyncHub.Infrastructure.Jobs;
 using ErpSyncHub.Infrastructure.Persistence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +23,9 @@ public static class DependencyInjection
 
         services.AddDbContext<ErpSyncHubDbContext>((serviceProvider, builder) =>
             DbContextSetup.Configure(builder, serviceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString));
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<IJobQueue, PostgresJobQueue>();
 
         // Debe registrarse antes que cualquier servicio en segundo plano que use la base de datos.
         services.AddHostedService<DatabaseMigrationHostedService>();
