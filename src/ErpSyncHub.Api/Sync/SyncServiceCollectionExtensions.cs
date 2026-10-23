@@ -6,7 +6,10 @@ namespace ErpSyncHub.Api.Sync;
 
 internal static class SyncServiceCollectionExtensions
 {
-    /// <summary>Registra la configuración de la sincronización de pedidos, que se valida al iniciar la aplicación.</summary>
+    /// <summary>
+    /// Registra la configuración de la sincronización de pedidos y el worker que procesa los jobs. La configuración se
+    /// valida al iniciar la aplicación.
+    /// </summary>
     public static IServiceCollection AddOrderSync(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<OrderSyncOptions>()
@@ -14,6 +17,14 @@ internal static class SyncServiceCollectionExtensions
             .ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<OrderSyncOptions>, OrderSyncOptionsValidator>());
         services.AddSingleton(serviceProvider => serviceProvider.GetRequiredService<IOptions<OrderSyncOptions>>().Value);
+
+        services.AddOptions<SyncWorkerOptions>()
+            .Bind(configuration.GetSection(SyncWorkerOptions.SectionName))
+            .ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SyncWorkerOptions>, SyncWorkerOptionsValidator>());
+
+        // Va después de la migración de la base de datos (registrada en AddInfrastructure): los servicios se inician en orden.
+        services.AddHostedService<SyncWorker>();
 
         return services;
     }

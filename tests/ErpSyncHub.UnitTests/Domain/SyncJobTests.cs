@@ -189,6 +189,56 @@ public class SyncJobTests
     }
 
     [Fact]
+    public void Release_devuelve_el_job_a_pendiente_y_libera_el_lease_sin_borrar_el_intento_contado()
+    {
+        var job = ClaimedJob("worker-1");
+
+        var result = job.Release("worker-1", Now + TimeSpan.FromSeconds(3));
+
+        result.IsSuccess.ShouldBeTrue();
+        job.Status.ShouldBe(JobStatus.Pending);
+        job.LockedBy.ShouldBeNull();
+        job.LockedUntil.ShouldBeNull();
+        job.AttemptCount.ShouldBe(1);
+        job.FinishedAt.ShouldBeNull();
+        job.UpdatedAt.ShouldBe(Now + TimeSpan.FromSeconds(3));
+        job.IsClaimable(Now).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Un_job_liberado_se_puede_tomar_de_nuevo_con_un_intento_nuevo()
+    {
+        var job = ClaimedJob("worker-1");
+        job.Release("worker-1", Now);
+
+        var second = job.Claim("worker-2", Now, Lease);
+
+        second.IsSuccess.ShouldBeTrue();
+        second.Value.Number.ShouldBe(2);
+        job.AttemptCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public void Release_solo_lo_puede_hacer_el_worker_dueno_del_lease()
+    {
+        var job = ClaimedJob("worker-1");
+
+        job.Release("worker-2", Now).Error!.Code.ShouldBe("job.lost_lease");
+        job.Status.ShouldBe(JobStatus.Processing);
+    }
+
+    [Fact]
+    public void Release_de_un_job_que_no_esta_en_proceso_falla()
+    {
+        NewJob().Release("worker-1", Now).Error!.Code.ShouldBe("job.not_processing");
+
+        var closed = ClaimedJob("worker-1");
+        closed.MarkSucceeded("worker-1", SapOrder, Now);
+        closed.Release("worker-1", Now).Error!.Code.ShouldBe("job.not_processing");
+        closed.Status.ShouldBe(JobStatus.Succeeded);
+    }
+
+    [Fact]
     public void Solo_el_worker_dueno_del_lease_puede_cerrar_el_job()
     {
         var job = ClaimedJob("worker-1");

@@ -17,6 +17,7 @@ public static class DependencyInjection
 
         services.AddScoped<WooCommerceWebhookHandler>();
         services.AddScoped<OrderSyncService>();
+        services.AddScoped<SyncJobRunner>();
         return services;
     }
 }

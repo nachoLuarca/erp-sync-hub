@@ -165,6 +165,25 @@ public sealed class SyncJob
         return Result.Success();
     }
 
+    /// <summary>
+    /// Devuelve el job a la cola sin cerrarlo: lo usa un worker que se apaga, para que otro lo tome de inmediato en lugar
+    /// de esperar a que venza el lease. El intento queda registrado y el contador no retrocede.
+    /// </summary>
+    public Result Release(string workerId, DateTimeOffset now)
+    {
+        var ownership = EnsureOwnedBy(workerId);
+        if (ownership is not null)
+        {
+            return Result.Failure(ownership);
+        }
+
+        Status = JobStatus.Pending;
+        LockedBy = null;
+        LockedUntil = null;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
     /// <summary>Cierra el job como fallido, guardando el motivo.</summary>
     public Result MarkFailed(string workerId, ResultError error, DateTimeOffset now)
     {

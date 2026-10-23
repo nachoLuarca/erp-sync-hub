@@ -272,6 +272,53 @@ public class JobQueueTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Release_devuelve_el_job_a_la_cola_y_abandona_el_intento()
+    {
+        var (connectionString, queue) = await NewQueueAsync();
+        using var _ = queue;
+        await queue.EnqueueAsync(queue.NewJob("5501"));
+        var claim = (await queue.ClaimAsync("worker-1")).Single();
+
+        var released = await queue.ReleaseAsync(claim);
+
+        released.IsSuccess.ShouldBeTrue();
+        (await ScalarAsync<string>(connectionString, "SELECT status FROM sync_jobs")).ShouldBe("pending");
+        (await ScalarAsync<string?>(connectionString, "SELECT locked_by FROM sync_jobs")).ShouldBeNull();
+        (await ScalarAsync<string>(connectionString, "SELECT outcome FROM sync_attempts")).ShouldBe("abandoned");
+    }
+
+    [Fact]
+    public async Task Un_job_liberado_lo_toma_otro_worker_de_inmediato_sin_esperar_el_lease()
+    {
+        var (connectionString, queue) = await NewQueueAsync();
+        using var _ = queue;
+        await queue.EnqueueAsync(queue.NewJob("5501"));
+        var claim = (await queue.ClaimAsync("worker-1", lease: TimeSpan.FromMinutes(30))).Single();
+        await queue.ReleaseAsync(claim);
+
+        var next = (await queue.ClaimAsync("worker-2")).ShouldHaveSingleItem();
+
+        next.AttemptNumber.ShouldBe(2);
+        (await ColumnAsync(connectionString, "SELECT outcome FROM sync_attempts ORDER BY number")).ShouldBe(["abandoned", "in_progress"]);
+    }
+
+    [Fact]
+    public async Task Un_worker_que_perdio_el_lease_no_puede_liberar_el_job_que_otro_retomo()
+    {
+        var (connectionString, queue) = await NewQueueAsync();
+        using var _ = queue;
+        await queue.EnqueueAsync(queue.NewJob("5501"));
+        var slow = (await queue.ClaimAsync("worker-1", lease: TimeSpan.FromMinutes(5))).Single();
+        queue.Time.Advance(TimeSpan.FromMinutes(6));
+        await queue.ClaimAsync("worker-2");
+
+        var released = await queue.ReleaseAsync(slow);
+
+        released.Error!.Code.ShouldBe("job.lost_lease");
+        (await ScalarAsync<string>(connectionString, "SELECT locked_by FROM sync_jobs")).ShouldBe("worker-2");
+    }
+
+    [Fact]
     public async Task Un_job_ya_cerrado_no_se_puede_cerrar_de_nuevo()
     {
         var (_, queue) = await NewQueueAsync();

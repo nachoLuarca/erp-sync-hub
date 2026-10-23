@@ -55,6 +55,9 @@ internal sealed class QueueHarness : IDisposable
     public Task<Result> FailAsync(ClaimedJob claim, ResultError error) =>
         UseAsync(queue => queue.FailAsync(claim, error, CancellationToken.None));
 
+    public Task<Result> ReleaseAsync(ClaimedJob claim) =>
+        UseAsync(queue => queue.ReleaseAsync(claim, CancellationToken.None));
+
     public void Dispose() => _provider.Dispose();
 
     private async Task<T> UseAsync<T>(Func<IJobQueue, Task<T>> action)

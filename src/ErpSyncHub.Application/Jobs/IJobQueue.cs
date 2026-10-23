@@ -27,6 +27,12 @@ public interface IJobQueue
 
     /// <summary>Cierra el job como fallido. Falla con <c>job.lost_lease</c> si otro worker lo retomó mientras tanto.</summary>
     Task<Result> FailAsync(ClaimedJob claim, ResultError failure, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Devuelve el job a la cola sin cerrarlo y deja su intento como abandonado. Lo usa un worker que se apaga para que
+    /// otro lo tome de inmediato. Falla con <c>job.lost_lease</c> si otro worker lo retomó mientras tanto.
+    /// </summary>
+    Task<Result> ReleaseAsync(ClaimedJob claim, CancellationToken cancellationToken);
 }
 
 /// <param name="JobId">Identificador del job, nuevo o ya existente.</param>

@@ -92,6 +92,63 @@ public class ApiStartupTests(PostgresFixture postgres)
         exception.Message.ShouldContain("MaxBodyBytes");
     }
 
+    [Theory]
+    [InlineData("Worker:Concurrency", "0", "Worker:Concurrency")]
+    [InlineData("Worker:Concurrency", "99", "Worker:Concurrency")]
+    [InlineData("Worker:PollInterval", "00:00:00", "Worker:PollInterval")]
+    [InlineData("Worker:LeaseDuration", "00:00:10", "al menos 30 segundos")]
+    public void Una_configuracion_invalida_del_worker_impide_arrancar(string key, string value, string expectedInMessage)
+    {
+        using var factory = ApiFactory.Create("Host=localhost", configure: builder => builder.UseSetting(key, value));
+
+        var exception = Should.Throw<OptionsValidationException>(() => factory.CreateClient());
+
+        exception.Message.ShouldContain(expectedInMessage);
+    }
+
+    [Fact]
+    public void El_lease_debe_ser_mayor_que_el_tiempo_de_espera_de_las_llamadas_a_SAP()
+    {
+        using var factory = ApiFactory.Create(
+            "Host=localhost",
+            configure: builder =>
+            {
+                builder.UseSetting("SAP:RequestTimeout", "00:02:00");
+                builder.UseSetting("Worker:LeaseDuration", "00:01:00");
+            });
+
+        var exception = Should.Throw<OptionsValidationException>(() => factory.CreateClient());
+
+        exception.Message.ShouldContain("mayor que el tiempo de espera");
+        exception.Message.ShouldContain("SAP:RequestTimeout");
+    }
+
+    [Fact]
+    public void Un_lease_mayor_que_el_tiempo_de_espera_de_SAP_se_acepta()
+    {
+        using var factory = ApiFactory.Create(
+            "Host=localhost",
+            configure: builder =>
+            {
+                builder.UseSetting("SAP:RequestTimeout", "00:00:30");
+                builder.UseSetting("Worker:LeaseDuration", "00:01:00");
+            });
+
+        Should.NotThrow(() => factory.CreateClient());
+    }
+
+    [Fact]
+    public void Una_zona_horaria_inexistente_impide_arrancar()
+    {
+        using var factory = ApiFactory.Create(
+            "Host=localhost",
+            configure: builder => builder.UseSetting("Sync:WooCommerce:TimeZoneId", "Marte/Olympus"));
+
+        var exception = Should.Throw<OptionsValidationException>(() => factory.CreateClient());
+
+        exception.Message.ShouldContain("zona horaria");
+    }
+
     private static async Task<long> TableCountAsync(string connectionString)
     {
         await using var connection = new NpgsqlConnection(connectionString);

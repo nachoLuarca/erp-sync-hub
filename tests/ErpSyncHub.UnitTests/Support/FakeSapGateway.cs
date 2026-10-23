@@ -25,6 +25,9 @@ internal sealed class FakeSapGateway : ISapGateway
     /// <summary>Nombres de las operaciones recibidas, en orden.</summary>
     public List<string> Calls { get; } = [];
 
+    /// <summary>Se ejecuta justo después de crear una orden; permite simular que algo ocurre en ese instante.</summary>
+    public Action? AfterCreateOrder { get; set; }
+
     /// <summary>Último correo recibido en una búsqueda.</summary>
     public string? LastEmailSearched { get; private set; }
 
@@ -86,6 +89,7 @@ internal sealed class FakeSapGateway : ISapGateway
                 var created = new SapOrderReference(_nextDocEntry, 1000 + _nextDocEntry, order.CardCode, total);
                 _nextDocEntry++;
                 Orders.Add((order.Reference, order, created));
+                AfterCreateOrder?.Invoke();
                 return created;
             });
 

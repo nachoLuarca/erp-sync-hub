@@ -7,7 +7,10 @@ using Npgsql;
 
 namespace ErpSyncHub.IntegrationTests.Support;
 
-/// <summary>La Api real en memoria con una base de datos propia, y utilidades para enviarle webhooks firmados.</summary>
+/// <summary>
+/// La Api real en memoria con una base de datos propia, y utilidades para enviarle webhooks firmados y esperar
+/// el resultado del worker.
+/// </summary>
 internal sealed class WebhookHost : IAsyncDisposable
 {
     private readonly WebApplicationFactory<Program> _factory;
@@ -23,11 +26,34 @@ internal sealed class WebhookHost : IAsyncDisposable
 
     public string ConnectionString { get; }
 
-    public static async Task<WebhookHost> StartAsync(PostgresFixture postgres, Action<IWebHostBuilder>? configure = null)
+    /// <param name="postgres">PostgreSQL compartido de las pruebas.</param>
+    /// <param name="configure">Ajustes adicionales del host.</param>
+    /// <param name="sap">SAP simulado al que se conecta el hub.</param>
+    /// <param name="sapHandler">Servidor falso de SAP, para provocar fallos de red.</param>
+    /// <param name="workerEnabled">Activa el worker que procesa los jobs.</param>
+    /// <param name="seed">Prepara la base de datos antes de arrancar la Api (por ejemplo, con jobs que otro worker dejó a medias).</param>
+    public static async Task<WebhookHost> StartAsync(
+        PostgresFixture postgres,
+        Action<IWebHostBuilder>? configure = null,
+        SapMockHost? sap = null,
+        Func<HttpMessageHandler>? sapHandler = null,
+        bool workerEnabled = false,
+        Func<string, Task>? seed = null)
     {
         var connectionString = await postgres.CreateMigratedDatabaseAsync();
-        return new WebhookHost(ApiFactory.Create(connectionString, configure: configure), connectionString);
+        if (seed is not null)
+        {
+            await seed(connectionString);
+        }
+
+        return new WebhookHost(
+            ApiFactory.Create(connectionString, sap: sap, sapHandler: sapHandler, workerEnabled: workerEnabled, configure: configure),
+            connectionString);
     }
+
+    /// <summary>Arranca la Api sobre una base de datos que ya tiene datos, como un reinicio del servicio.</summary>
+    public static WebhookHost StartOnDatabase(string connectionString, SapMockHost? sap = null, bool workerEnabled = true) =>
+        new(ApiFactory.Create(connectionString, sap: sap, workerEnabled: workerEnabled), connectionString);
 
     /// <summary>Arranca la Api contra una base de datos que no existe, para simular una caída de PostgreSQL.</summary>
     public static WebhookHost StartWithUnreachableDatabase() =>
@@ -74,6 +100,38 @@ internal sealed class WebhookHost : IAsyncDisposable
         await using var reader = await command.ExecuteReaderAsync();
         await reader.ReadAsync();
         return await reader.IsDBNullAsync(0) ? default : reader.GetFieldValue<T>(0);
+    }
+
+    public async Task ExecuteAsync(string sql)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Espera a que la consulta devuelva verdadero. Si no ocurre en el plazo, falla mostrando el estado de los jobs
+    /// para que el motivo se vea en el informe de la prueba.
+    /// </summary>
+    public async Task WaitUntilAsync(string booleanSql, string description, TimeSpan? timeout = null)
+    {
+        var limit = timeout ?? TimeSpan.FromSeconds(30);
+        var started = DateTime.UtcNow;
+
+        while (DateTime.UtcNow - started < limit)
+        {
+            if (await ScalarAsync<bool>(booleanSql))
+            {
+                return;
+            }
+
+            await Task.Delay(50);
+        }
+
+        var state = await ScalarAsync<string>(
+            "SELECT coalesce(string_agg(external_id || '=' || status || coalesce('/' || last_error_code, ''), ', '), 'sin jobs') FROM sync_jobs");
+        throw new TimeoutException($"Se agotó el tiempo esperando: {description}. Estado de los jobs: {state}.");
     }
 
     public async ValueTask DisposeAsync()

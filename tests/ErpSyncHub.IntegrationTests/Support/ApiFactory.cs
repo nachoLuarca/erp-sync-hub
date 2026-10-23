@@ -6,17 +6,29 @@ using SapB1.Client;
 
 namespace ErpSyncHub.IntegrationTests.Support;
 
-/// <summary>Levanta la Api real en memoria apuntando a una base de datos de prueba y, si se indica, al SAP simulado.</summary>
+/// <summary>Levanta la Api real en memoria apuntando a una base de datos de prueba y, si se indica, a un SAP.</summary>
 internal static class ApiFactory
 {
     /// <summary>Secreto de webhook de las pruebas (la Api exige al menos 16 caracteres).</summary>
     public const string WebhookSecret = "secreto-de-pruebas-del-webhook-0123456789";
 
+    /// <param name="connectionString">Base de datos de la prueba.</param>
+    /// <param name="migrateOnStartup">Aplica las migraciones al iniciar.</param>
+    /// <param name="webhookSecret">Secreto del webhook; <see langword="null"/> lo deja sin configurar.</param>
+    /// <param name="sap">SAP simulado en memoria al que se conecta el hub.</param>
+    /// <param name="sapHandler">Alternativa a <paramref name="sap"/>: un servidor falso para provocar fallos de red.</param>
+    /// <param name="workerEnabled">
+    /// Activa el worker. Por defecto está apagado para que los tests de la Api no vean cambiar sus jobs; cuando se activa
+    /// consulta cada 50 ms para que las pruebas sean rápidas.
+    /// </param>
+    /// <param name="configure">Ajustes adicionales del host.</param>
     public static WebApplicationFactory<Program> Create(
         string connectionString,
         bool migrateOnStartup = false,
         string? webhookSecret = WebhookSecret,
         SapMockHost? sap = null,
+        Func<HttpMessageHandler>? sapHandler = null,
+        bool workerEnabled = false,
         Action<IWebHostBuilder>? configure = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
@@ -30,10 +42,15 @@ internal static class ApiFactory
             builder.UseSetting("SAP:UserName", SapCredentials.UserName);
             builder.UseSetting("SAP:Password", SapCredentials.Password);
 
-            if (sap is not null)
+            builder.UseSetting("Worker:Enabled", workerEnabled ? "true" : "false");
+            builder.UseSetting("Worker:PollInterval", "00:00:00.050");
+            builder.UseSetting("Worker:LeaseDuration", "00:01:00");
+
+            var handler = sap is not null ? sap.CreateHandler : sapHandler;
+            if (handler is not null)
             {
                 builder.ConfigureTestServices(services =>
-                    services.AddHttpClient(nameof(ISapB1Client)).ConfigurePrimaryHttpMessageHandler(sap.CreateHandler));
+                    services.AddHttpClient(nameof(ISapB1Client)).ConfigurePrimaryHttpMessageHandler(handler));
             }
 
             configure?.Invoke(builder);

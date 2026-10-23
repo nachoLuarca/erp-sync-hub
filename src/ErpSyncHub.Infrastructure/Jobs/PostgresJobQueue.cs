@@ -151,6 +151,16 @@ internal sealed class PostgresJobQueue(ErpSyncHubDbContext context, TimeProvider
             cancellationToken);
     }
 
+    public Task<Result> ReleaseAsync(ClaimedJob claim, CancellationToken cancellationToken) =>
+        CloseAsync(
+            claim,
+            (job, attempt, now) =>
+            {
+                var released = job.Release(claim.WorkerId, now);
+                return released.IsFailure ? released : attempt.Abandon(now);
+            },
+            cancellationToken);
+
     private async Task<Result> CloseAsync(
         ClaimedJob claim,
         Func<SyncJob, SyncAttempt, DateTimeOffset, Result> close,
