@@ -72,7 +72,9 @@ cp .env.example .env        # y completa los valores marcados como OBLIGATORIO
 # 2. Infraestructura: PostgreSQL y SAP simulado
 docker compose up -d --build
 
-# 3. La API
+# 3. La API: necesita la cadena de conexión a la base de datos (con la contraseña de tu .env)
+export Database__ConnectionString="Host=localhost;Port=5432;Database=erpsynchub;Username=erpsynchub;Password=<POSTGRES_PASSWORD>"
+export Database__MigrateOnStartup=true      # aplica las migraciones al iniciar (solo desarrollo)
 dotnet run --project src/ErpSyncHub.Api
 ```
 
