@@ -66,13 +66,14 @@ Api ──► Application ──► Domain
 Requisitos: [.NET SDK 10](https://dotnet.microsoft.com/download) y Docker.
 
 ```bash
-# 1. Configuración local (el archivo .env no se versiona)
-cp .env.example .env        # y completa los valores marcados como OBLIGATORIO
+# 1. Variables obligatorias (ver "Variables de entorno" más abajo para dejarlas permanentes)
+export ERPSYNC_POSTGRES_PASSWORD='<elige una contraseña>'
+export ERPSYNC_WC_WEBHOOK_SECRET='<mínimo 16 caracteres>'
 
 # 2. Entorno completo: PostgreSQL, SAP simulado, Seq y el hub (ya queda funcionando en http://localhost:5200)
 docker compose up -d --build        # PostgreSQL, el SAP simulado y el hub; la tienda es opcional (--profile tienda)
 
-# 3. Opcional, para desarrollar: el hub desde el código (puerto 5210; apaga el contenedor `hub` si quieres un solo worker). Necesita la cadena de conexión a la base de datos (con la contraseña de tu .env)
+# 3. Opcional, para desarrollar: el hub desde el código (puerto 5210; apaga el contenedor `hub` si quieres un solo worker). Necesita la cadena de conexión a la base de datos (con la contraseña de ERPSYNC_POSTGRES_PASSWORD)
 export Database__ConnectionString="Host=localhost;Port=5433;Database=erpsynchub;Username=erpsynchub;Password=<POSTGRES_PASSWORD>"
 export Database__MigrateOnStartup=true      # aplica las migraciones al iniciar (solo desarrollo)
 export Webhooks__WooCommerce__Secret="<mínimo 16 caracteres; el mismo que el secreto del webhook en WooCommerce>"
@@ -83,9 +84,32 @@ export SAP__Password="manager"                          # credenciales ficticias
 dotnet run --project src/ErpSyncHub.Api
 ```
 
+### Variables de entorno
+
+No hay archivo de configuración en el repositorio: todo entra por variables de entorno, y las de Docker Compose llevan el prefijo `ERPSYNC_` para no chocar con otros proyectos locales. La tabla completa (obligatoria o no, valor por defecto y para qué sirve) está en [docs/variables-de-entorno.md](docs/variables-de-entorno.md). Las obligatorias para el entorno por defecto son `ERPSYNC_POSTGRES_PASSWORD` y `ERPSYNC_WC_WEBHOOK_SECRET`; con la tienda, además `ERPSYNC_WP_DB_PASSWORD` y `ERPSYNC_WP_ADMIN_PASSWORD`.
+
+**Windows (permanente, nivel usuario).** Abre una terminal nueva después de definirlas; las ya abiertas no las ven. Compose lee el entorno de la terminal desde la que lo ejecutas, así que no hace falta reiniciar Docker Desktop.
+
+```powershell
+[Environment]::SetEnvironmentVariable('ERPSYNC_POSTGRES_PASSWORD', '<contraseña>', 'User')
+[Environment]::SetEnvironmentVariable('ERPSYNC_WC_WEBHOOK_SECRET', '<mínimo 16 caracteres>', 'User')
+# Para revisarla:  [Environment]::GetEnvironmentVariable('ERPSYNC_POSTGRES_PASSWORD', 'User')
+# Para borrarla:   [Environment]::SetEnvironmentVariable('ERPSYNC_POSTGRES_PASSWORD', $null, 'User')
+```
+
+**Linux y macOS.** Para la sesión actual, `export`; para que sean permanentes, agrégalas a `~/.profile` (o `~/.bashrc`, `~/.zshrc`).
+
+```bash
+export ERPSYNC_POSTGRES_PASSWORD='<contraseña>'
+export ERPSYNC_WC_WEBHOOK_SECRET='<mínimo 16 caracteres>'
+```
+
+**CI y despliegue (GitHub Actions, Render).** Se definen como secretos o variables de entorno del servicio, nunca en el repositorio. En GitHub Actions: `Settings → Secrets and variables → Actions`, y en el flujo de trabajo `env: ERPSYNC_POSTGRES_PASSWORD: ${{ secrets.ERPSYNC_POSTGRES_PASSWORD }}`. En Render: sección *Environment* del servicio. Allí no interviene Compose, así que lo que se define son las variables del hub (`Database__ConnectionString`, `Webhooks__WooCommerce__Secret`, `SAP__*`).
+
+**El archivo `.env` sigue siendo opcional.** Docker Compose lo lee solo si existe en la raíz del proyecto (está en `.gitignore`), así que puedes usarlo en lugar de las variables del sistema si lo prefieres. Una variable definida en el sistema tiene prioridad sobre la misma dentro de `.env`.
 ### Servicios y puertos
 
-Los puertos del host se publican solo en `127.0.0.1` y se eligen para no chocar con los de otros proyectos habituales (PostgreSQL 5432, Redis 6379, SMTP 1025…). Cada uno se puede cambiar en `.env`. Entre contenedores no importan: se hablan por nombre de servicio y puerto interno (`postgres:5432`, `sap-mock:8080`, `seq:80`, `hub:8080`).
+Los puertos del host se publican solo en `127.0.0.1` y se eligen para no chocar con los de otros proyectos habituales (PostgreSQL 5432, Redis 6379, SMTP 1025…). Cada uno se puede cambiar con su variable `ERPSYNC_*_HOST_PORT` (ver [variables de entorno](docs/variables-de-entorno.md)). Entre contenedores no importan: se hablan por nombre de servicio y puerto interno (`postgres:5432`, `sap-mock:8080`, `seq:80`, `hub:8080`).
 
 | Servicio | En Docker | Con `dotnet run` | URL |
 |---|---|---|---|
@@ -101,7 +125,7 @@ Seq corre sin autenticación porque es solo para desarrollo local: no lo exponga
 
 #### Si un puerto está ocupado
 
-Compose falla con `port is already allocated`. Revisa qué lo usa y cambia la variable correspondiente en `.env`:
+Compose falla con `port is already allocated`. Revisa qué lo usa y cambia la variable `ERPSYNC_*_HOST_PORT` correspondiente:
 
 ```powershell
 Get-NetTCPConnection -LocalPort 5433 -ErrorAction SilentlyContinue   # PowerShell
@@ -119,11 +143,11 @@ docker ps --format "table {{.Names}}\t{{.Ports}}"                    # contenedo
 | Apagar (conserva los datos) | `docker compose down` |
 | Apagar y borrar volúmenes | `docker compose down -v` |
 
-Con el hub en `dotnet run`, para enviar sus logs a Seq define `Seq__ServerUrl=http://localhost:5202`; sin esa variable solo escribe en consola. Si además usas la tienda, apunta el webhook al hub del host con `HUB_WEBHOOK_URL=http://host.docker.internal:5210/webhooks/woocommerce/orders`.
+Con el hub en `dotnet run`, para enviar sus logs a Seq define `Seq__ServerUrl=http://localhost:5202`; sin esa variable solo escribe en consola. Si además usas la tienda, apunta el webhook al hub del host con `ERPSYNC_HUB_WEBHOOK_URL=http://host.docker.internal:5210/webhooks/woocommerce/orders`.
 
 ### Prueba de punta a punta: WooCommerce → hub → SAP
 
-Con Docker Compose se levanta todo el flujo: PostgreSQL, el SAP simulado y el hub (por defecto) y una tienda WooCommerce real (`--profile tienda`). Define en `.env` al menos `POSTGRES_PASSWORD`, `WP_DB_PASSWORD`, `WP_ADMIN_PASSWORD` y `WC_WEBHOOK_SECRET` (mínimo 16 caracteres; ver `.env.example`).
+Con Docker Compose se levanta todo el flujo: PostgreSQL, el SAP simulado y el hub (por defecto) y una tienda WooCommerce real (`--profile tienda`). Define al menos `ERPSYNC_POSTGRES_PASSWORD`, `ERPSYNC_WP_DB_PASSWORD`, `ERPSYNC_WP_ADMIN_PASSWORD` y `ERPSYNC_WC_WEBHOOK_SECRET` (mínimo 16 caracteres; ver [variables de entorno](docs/variables-de-entorno.md)).
 
 ```bash
 # 1. PostgreSQL, el SAP simulado, el hub (se construye desde src/ErpSyncHub.Api/Dockerfile) y la tienda
@@ -153,7 +177,7 @@ docker compose exec postgres psql -U erpsynchub -c "select external_id, status, 
 
 > **Solo desarrollo.** WordPress bloquea por seguridad los webhooks hacia direcciones privadas y puertos no estándar, que es donde corre el hub en Compose. El plugin [`docker/tienda/mu-plugins/permitir-webhooks-locales.php`](docker/tienda/mu-plugins/permitir-webhooks-locales.php) lo permite solo para los hosts de desarrollo y hace la entrega síncrona; **no debe instalarse en una tienda real**, donde la URL del webhook es pública y HTTPS.
 
-Si prefieres ejecutar el hub fuera de Docker, apunta el webhook a tu máquina con `HUB_WEBHOOK_URL=http://host.docker.internal:5210/webhooks/woocommerce/orders` en `.env`.
+Si prefieres ejecutar el hub fuera de Docker, apunta el webhook a tu máquina con `ERPSYNC_HUB_WEBHOOK_URL=http://host.docker.internal:5210/webhooks/woocommerce/orders`.
 
 ### Desarrollo
 

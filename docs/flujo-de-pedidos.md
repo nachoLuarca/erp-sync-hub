@@ -1,4 +1,4 @@
-# Flujo de pedidos: tienda → SAP
+﻿# Flujo de pedidos: tienda → SAP
 
 Cómo viaja un pedido de WooCommerce hasta convertirse en una orden de venta de SAP Business One. Las decisiones de fondo están en el [ADR 0007](adr/0007-inbox-y-cola-con-lease.md) (recepción y cola) y el [ADR 0008](adr/0008-sincronizacion-de-pedidos.md) (cómo se convierte el pedido).
 
@@ -64,7 +64,7 @@ Los errores son [ProblemDetails (RFC 9457)](https://www.rfc-editor.org/rfc/rfc94
 
 ## Configuración
 
-Todo se configura por variables de entorno (`:` se escribe `__`); ver también [`.env.example`](../.env.example).
+Todo se configura por variables de entorno (`:` se escribe `__`); ver también [variables de entorno](variables-de-entorno.md).
 
 | Variable | Por defecto | Descripción |
 |---|---|---|

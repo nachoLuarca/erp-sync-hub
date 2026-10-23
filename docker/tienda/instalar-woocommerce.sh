@@ -3,7 +3,7 @@
 # Lo ejecuta el servicio `tienda-setup` del perfil `tienda`.
 set -eu
 
-: "${WP_ADMIN_PASSWORD:?Define WP_ADMIN_PASSWORD en .env (ver .env.example)}"
+: "${WP_ADMIN_PASSWORD:?Define ERPSYNC_WP_ADMIN_PASSWORD (ver docs/variables-de-entorno.md)}"
 
 # Se usa mysqli (el mismo driver de WordPress): el cliente MariaDB de la imagen wp-cli no soporta
 # caching_sha2_password, el método de autenticación por defecto de MySQL 8.4.
@@ -70,7 +70,7 @@ if [ -n "${WC_WEBHOOK_SECRET:-}" ]; then
   crear_webhook "ERP Sync Hub - pedido creado" order.created
   crear_webhook "ERP Sync Hub - pedido actualizado" order.updated
 else
-  echo "AVISO: WC_WEBHOOK_SECRET no está definido en .env; no se crearon los webhooks hacia el hub."
+  echo "AVISO: ERPSYNC_WC_WEBHOOK_SECRET no está definida; no se crearon los webhooks hacia el hub."
 fi
 
 echo "Tienda lista en ${WP_URL}"
