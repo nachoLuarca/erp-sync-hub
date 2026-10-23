@@ -28,7 +28,7 @@ add_filter(
 add_filter(
 	'http_allowed_safe_ports',
 	static function ( $ports ) {
-		return array_unique( array_merge( (array) $ports, array( 5191, 8080 ) ) );
+		return array_unique( array_merge( (array) $ports, array( 5210, 8080 ) ) );
 	}
 );
 

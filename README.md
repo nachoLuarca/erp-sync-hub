@@ -73,10 +73,10 @@ cp .env.example .env        # y completa los valores marcados como OBLIGATORIO
 docker compose up -d --build        # PostgreSQL, el SAP simulado y el hub; la tienda es opcional (--profile tienda)
 
 # 3. La API: necesita la cadena de conexión a la base de datos (con la contraseña de tu .env)
-export Database__ConnectionString="Host=localhost;Port=5432;Database=erpsynchub;Username=erpsynchub;Password=<POSTGRES_PASSWORD>"
+export Database__ConnectionString="Host=localhost;Port=5433;Database=erpsynchub;Username=erpsynchub;Password=<POSTGRES_PASSWORD>"
 export Database__MigrateOnStartup=true      # aplica las migraciones al iniciar (solo desarrollo)
 export Webhooks__WooCommerce__Secret="<mínimo 16 caracteres; el mismo que el secreto del webhook en WooCommerce>"
-export SAP__BaseUrl="http://localhost:5100"            # el SAP simulado de Docker Compose
+export SAP__BaseUrl="http://localhost:5201"            # el SAP simulado de Docker Compose
 export SAP__CompanyDb="SBODemoCL"
 export SAP__UserName="manager"
 export SAP__Password="manager"                          # credenciales ficticias del mock; con un SAP real, usa un gestor de secretos
@@ -85,10 +85,10 @@ dotnet run --project src/ErpSyncHub.Api
 
 | Servicio | URL |
 |---|---|
-| API | `http://localhost:5191/health` |
-| Documentación (solo desarrollo) | `http://localhost:5191/scalar` |
-| SAP simulado (Docker) | `http://localhost:5100/health` |
-| PostgreSQL | `localhost:5432` |
+| API | `http://localhost:5200/health` (Docker) · `http://localhost:5210/health` (`dotnet run`) |
+| Documentación (solo con `dotnet run`, entorno Development) | `http://localhost:5210/scalar` |
+| SAP simulado (Docker) | `http://localhost:5201/health` |
+| PostgreSQL | `localhost:5433` |
 
 ### Prueba de punta a punta: WooCommerce → hub → SAP
 
@@ -103,7 +103,7 @@ docker compose --profile tienda up -d --build --wait
 docker compose --profile tienda run --rm tienda-setup
 ```
 
-La tienda queda en `http://localhost:8081` (usuario `admin`). Haz una compra desde la tienda, o crea un pedido pagado desde la consola:
+La tienda queda en `http://localhost:5203` (usuario `admin`). Haz una compra desde la tienda, o crea un pedido pagado desde la consola:
 
 ```bash
 docker compose --profile tienda run --rm --entrypoint wp tienda-setup wc shop_order create --user=admin \
@@ -115,14 +115,14 @@ docker compose --profile tienda run --rm --entrypoint wp tienda-setup wc shop_or
 Para seguir lo que pasó:
 
 ```bash
-curl http://localhost:5191/health                      # estado de PostgreSQL y SAP
+curl http://localhost:5200/health                      # estado de PostgreSQL y SAP
 docker compose logs hub                                # el webhook recibido y el job procesado
 docker compose exec postgres psql -U erpsynchub -c "select external_id, status, sap_doc_entry, last_error_code from sync_jobs"
 ```
 
 > **Solo desarrollo.** WordPress bloquea por seguridad los webhooks hacia direcciones privadas y puertos no estándar, que es donde corre el hub en Compose. El plugin [`docker/tienda/mu-plugins/permitir-webhooks-locales.php`](docker/tienda/mu-plugins/permitir-webhooks-locales.php) lo permite solo para los hosts de desarrollo y hace la entrega síncrona; **no debe instalarse en una tienda real**, donde la URL del webhook es pública y HTTPS.
 
-Si prefieres ejecutar el hub fuera de Docker, apunta el webhook a tu máquina con `HUB_WEBHOOK_URL=http://host.docker.internal:5191/webhooks/woocommerce/orders` en `.env`.
+Si prefieres ejecutar el hub fuera de Docker, apunta el webhook a tu máquina con `HUB_WEBHOOK_URL=http://host.docker.internal:5210/webhooks/woocommerce/orders` en `.env`.
 
 ### Desarrollo
 
