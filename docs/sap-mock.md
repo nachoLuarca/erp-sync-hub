@@ -5,8 +5,8 @@ SAP Business One simulado que replica el contrato del **Service Layer v1** (`/b1
 ## Ejecutarlo
 
 ```bash
-dotnet run --project src/SapB1.Mock        # http://localhost:5265
-docker compose up -d --build sap-mock      # http://localhost:5100
+dotnet run --project src/SapB1.Mock        # http://localhost:5211
+docker compose up -d --build sap-mock      # http://localhost:5201
 ```
 
 El estado vive en memoria: reiniciar el proceso o llamar a `POST /_mock/reset` restaura los datos semilla.

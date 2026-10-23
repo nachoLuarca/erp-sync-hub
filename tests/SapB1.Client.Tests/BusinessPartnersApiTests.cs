@@ -17,7 +17,7 @@ public class BusinessPartnersApiTests
         partner.CardCode.ShouldBe("C00001");
         partner.CardName.ShouldBe("Constructora Los Andes SpA");
         partner.CardType.ShouldBe(CardTypes.Customer);
-        partner.FederalTaxID.ShouldBe("76.123.456-7");
+        partner.FederalTaxID.ShouldBe("76.123.456-0");
         partner.EmailAddress.ShouldBe("compras@losandes.example.com");
         partner.Valid.ShouldBe(YesNo.Yes);
         partner.Frozen.ShouldBe(YesNo.No);
@@ -182,7 +182,7 @@ public class BusinessPartnersApiTests
         partner.EmailAddress.ShouldBe("nuevo@losandes.example.com");
         partner.Frozen.ShouldBe(YesNo.Yes);
         partner.CardName.ShouldBe("Constructora Los Andes SpA");
-        partner.FederalTaxID.ShouldBe("76.123.456-7");
+        partner.FederalTaxID.ShouldBe("76.123.456-0");
         partner.BPAddresses.Count.ShouldBe(2);
     }
 

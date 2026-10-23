@@ -1,8 +1,9 @@
 #!/bin/sh
-# Instala WordPress y WooCommerce de forma idempotente. Lo ejecuta el servicio `tienda-setup` del perfil `tienda`.
+# Instala WordPress y WooCommerce de forma idempotente y deja la tienda lista para probar el hub.
+# Lo ejecuta el servicio `tienda-setup` del perfil `tienda`.
 set -eu
 
-: "${WP_ADMIN_PASSWORD:?Define WP_ADMIN_PASSWORD en .env (ver .env.example)}"
+: "${WP_ADMIN_PASSWORD:?Define ERPSYNC_WP_ADMIN_PASSWORD (ver docs/variables-de-entorno.md)}"
 
 # Se usa mysqli (el mismo driver de WordPress): el cliente MariaDB de la imagen wp-cli no soporta
 # caching_sha2_password, el método de autenticación por defecto de MySQL 8.4.
@@ -30,4 +31,46 @@ fi
 wp plugin is-installed woocommerce || wp plugin install woocommerce
 wp plugin is-active woocommerce || wp plugin activate woocommerce
 wp rewrite structure '/%postname%/' --hard
+
+# --- Moneda: pesos chilenos, sin decimales ---
+wp option update woocommerce_currency CLP
+wp option update woocommerce_price_num_decimals 0
+
+# --- Productos de ejemplo con el SKU de artículos del SAP simulado (A00001, A00010...) ---
+crear_producto() {
+  sku="$1"
+  nombre="$2"
+  precio="$3"
+  if [ -z "$(wp wc product list --user="${WP_ADMIN_USER}" --sku="${sku}" --field=id)" ]; then
+    wp wc product create --user="${WP_ADMIN_USER}" --name="${nombre}" --type=simple --sku="${sku}" \
+      --regular_price="${precio}" --status=publish --porcelain >/dev/null
+    echo "Producto ${sku} creado."
+  fi
+}
+
+crear_producto A00001 "Taladro percutor 650 W" 39990
+crear_producto A00002 "Atornillador inalámbrico 12 V" 29990
+crear_producto A00010 "Huincha de medir 5 m" 2990
+
+# --- Webhooks hacia el hub: order.created y order.updated ---
+crear_webhook() {
+  nombre="$1"
+  topic="$2"
+  if wp wc webhook list --user="${WP_ADMIN_USER}" --field=name | grep -qxF "${nombre}"; then
+    echo "Webhook '${nombre}' ya existe."
+    return
+  fi
+
+  wp wc webhook create --user="${WP_ADMIN_USER}" --name="${nombre}" --topic="${topic}" \
+    --delivery_url="${HUB_WEBHOOK_URL}" --secret="${WC_WEBHOOK_SECRET}" --status=active --porcelain >/dev/null
+  echo "Webhook '${nombre}' creado hacia ${HUB_WEBHOOK_URL}."
+}
+
+if [ -n "${WC_WEBHOOK_SECRET:-}" ]; then
+  crear_webhook "ERP Sync Hub - pedido creado" order.created
+  crear_webhook "ERP Sync Hub - pedido actualizado" order.updated
+else
+  echo "AVISO: ERPSYNC_WC_WEBHOOK_SECRET no está definida; no se crearon los webhooks hacia el hub."
+fi
+
 echo "Tienda lista en ${WP_URL}"

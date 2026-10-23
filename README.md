@@ -66,31 +66,118 @@ Api ──► Application ──► Domain
 Requisitos: [.NET SDK 10](https://dotnet.microsoft.com/download) y Docker.
 
 ```bash
-# 1. Configuración local (el archivo .env no se versiona)
-cp .env.example .env        # y completa los valores marcados como OBLIGATORIO
+# 1. Variables obligatorias (ver "Variables de entorno" más abajo para dejarlas permanentes)
+export ERPSYNC_POSTGRES_PASSWORD='<elige una contraseña>'
+export ERPSYNC_WC_WEBHOOK_SECRET='<mínimo 16 caracteres>'
 
-# 2. Infraestructura: PostgreSQL y SAP simulado
-docker compose up -d --build
+# 2. Entorno completo: PostgreSQL, SAP simulado, Seq y el hub (ya queda funcionando en http://localhost:5200)
+docker compose up -d --build        # PostgreSQL, el SAP simulado y el hub; la tienda es opcional (--profile tienda)
 
-# 3. La API
+# 3. Opcional, para desarrollar: el hub desde el código (puerto 5210; apaga el contenedor `hub` si quieres un solo worker). Necesita la cadena de conexión a la base de datos (con la contraseña de ERPSYNC_POSTGRES_PASSWORD)
+export Database__ConnectionString="Host=localhost;Port=5433;Database=erpsynchub;Username=erpsynchub;Password=<POSTGRES_PASSWORD>"
+export Database__MigrateOnStartup=true      # aplica las migraciones al iniciar (solo desarrollo)
+export Webhooks__WooCommerce__Secret="<mínimo 16 caracteres; el mismo que el secreto del webhook en WooCommerce>"
+export SAP__BaseUrl="http://localhost:5201"            # el SAP simulado de Docker Compose
+export SAP__CompanyDb="SBODemoCL"
+export SAP__UserName="manager"
+export SAP__Password="manager"                          # credenciales ficticias del mock; con un SAP real, usa un gestor de secretos
 dotnet run --project src/ErpSyncHub.Api
 ```
 
-| Servicio | URL |
-|---|---|
-| API | `http://localhost:5191/health` |
-| Documentación (solo desarrollo) | `http://localhost:5191/scalar` |
-| SAP simulado (Docker) | `http://localhost:5100/health` |
-| PostgreSQL | `localhost:5432` |
+### Variables de entorno
 
-Tienda WooCommerce opcional, con WordPress y MySQL:
+No hay archivo de configuración en el repositorio: todo entra por variables de entorno, y las de Docker Compose llevan el prefijo `ERPSYNC_` para no chocar con otros proyectos locales. La tabla completa (obligatoria o no, valor por defecto y para qué sirve) está en [docs/variables-de-entorno.md](docs/variables-de-entorno.md). Las obligatorias para el entorno por defecto son `ERPSYNC_POSTGRES_PASSWORD` y `ERPSYNC_WC_WEBHOOK_SECRET`; con la tienda, además `ERPSYNC_WP_DB_PASSWORD` y `ERPSYNC_WP_ADMIN_PASSWORD`.
 
-```bash
-docker compose --profile tienda up -d
-docker compose --profile tienda run --rm tienda-setup   # instala WordPress y WooCommerce
+**Windows (permanente, nivel usuario).** Abre una terminal nueva después de definirlas; las ya abiertas no las ven. Compose lee el entorno de la terminal desde la que lo ejecutas, así que no hace falta reiniciar Docker Desktop.
+
+```powershell
+[Environment]::SetEnvironmentVariable('ERPSYNC_POSTGRES_PASSWORD', '<contraseña>', 'User')
+[Environment]::SetEnvironmentVariable('ERPSYNC_WC_WEBHOOK_SECRET', '<mínimo 16 caracteres>', 'User')
+# Para revisarla:  [Environment]::GetEnvironmentVariable('ERPSYNC_POSTGRES_PASSWORD', 'User')
+# Para borrarla:   [Environment]::SetEnvironmentVariable('ERPSYNC_POSTGRES_PASSWORD', $null, 'User')
 ```
 
-La tienda queda en `http://localhost:8081`.
+**Linux y macOS.** Para la sesión actual, `export`; para que sean permanentes, agrégalas a `~/.profile` (o `~/.bashrc`, `~/.zshrc`).
+
+```bash
+export ERPSYNC_POSTGRES_PASSWORD='<contraseña>'
+export ERPSYNC_WC_WEBHOOK_SECRET='<mínimo 16 caracteres>'
+```
+
+**CI y despliegue (GitHub Actions, Render).** Se definen como secretos o variables de entorno del servicio, nunca en el repositorio. En GitHub Actions: `Settings → Secrets and variables → Actions`, y en el flujo de trabajo `env: ERPSYNC_POSTGRES_PASSWORD: ${{ secrets.ERPSYNC_POSTGRES_PASSWORD }}`. En Render: sección *Environment* del servicio. Allí no interviene Compose, así que lo que se define son las variables del hub (`Database__ConnectionString`, `Webhooks__WooCommerce__Secret`, `SAP__*`).
+
+**El archivo `.env` sigue siendo opcional.** Docker Compose lo lee solo si existe en la raíz del proyecto (está en `.gitignore`), así que puedes usarlo en lugar de las variables del sistema si lo prefieres. Una variable definida en el sistema tiene prioridad sobre la misma dentro de `.env`.
+### Servicios y puertos
+
+Los puertos del host se publican solo en `127.0.0.1` y se eligen para no chocar con los de otros proyectos habituales (PostgreSQL 5432, Redis 6379, SMTP 1025…). Cada uno se puede cambiar con su variable `ERPSYNC_*_HOST_PORT` (ver [variables de entorno](docs/variables-de-entorno.md)). Entre contenedores no importan: se hablan por nombre de servicio y puerto interno (`postgres:5432`, `sap-mock:8080`, `seq:80`, `hub:8080`).
+
+| Servicio | En Docker | Con `dotnet run` | URL |
+|---|---|---|---|
+| API del hub (webhook, `/health`) | `5200` (`HUB_HOST_PORT`) | `5210` | http://localhost:5200/health |
+| Documentación de la API (Scalar) | — (solo en entorno `Development`) | `5210` | http://localhost:5210/scalar |
+| SAP simulado | `5201` (`SAP_MOCK_HOST_PORT`) | `5211` | http://localhost:5201/health |
+| Seq (logs estructurados) | `5202` (`SEQ_HOST_PORT`) | — | http://localhost:5202 |
+| Tienda WooCommerce (perfil `tienda`) | `5203` (`TIENDA_HOST_PORT`) | — | http://localhost:5203 |
+| PostgreSQL | `5433` (`POSTGRES_HOST_PORT`) | — | `localhost:5433` |
+| MySQL de la tienda | sin puerto en el host | — | solo desde la red de Compose |
+
+Seq corre sin autenticación porque es solo para desarrollo local: no lo expongas fuera de tu máquina. Para ver los logs de un pedido, filtra por `JobId = '<id del job>'`.
+
+#### Si un puerto está ocupado
+
+Compose falla con `port is already allocated`. Revisa qué lo usa y cambia la variable `ERPSYNC_*_HOST_PORT` correspondiente:
+
+```powershell
+Get-NetTCPConnection -LocalPort 5433 -ErrorAction SilentlyContinue   # PowerShell
+docker ps --format "table {{.Names}}\t{{.Ports}}"                    # contenedores que publican puertos
+```
+
+### Cómo levantar el entorno
+
+| Qué quieres | Comando |
+|---|---|
+| Todo lo del hub: PostgreSQL, SAP simulado, hub y Seq | `docker compose up -d --build --wait` |
+| Además, la tienda WooCommerce | `docker compose --profile tienda up -d --build --wait` y luego `docker compose --profile tienda run --rm tienda-setup` |
+| Solo la infraestructura, con el hub desde `dotnet run` | `docker compose up -d postgres sap-mock seq` y el bloque anterior (el hub queda en `5210`) |
+| Ver el estado | `docker compose ps` · `curl http://localhost:5200/health` |
+| Apagar (conserva los datos) | `docker compose down` |
+| Apagar y borrar volúmenes | `docker compose down -v` |
+
+Con el hub en `dotnet run`, para enviar sus logs a Seq define `Seq__ServerUrl=http://localhost:5202`; sin esa variable solo escribe en consola. Si además usas la tienda, apunta el webhook al hub del host con `ERPSYNC_HUB_WEBHOOK_URL=http://host.docker.internal:5210/webhooks/woocommerce/orders`.
+
+### Prueba de punta a punta: WooCommerce → hub → SAP
+
+Con Docker Compose se levanta todo el flujo: PostgreSQL, el SAP simulado y el hub (por defecto) y una tienda WooCommerce real (`--profile tienda`). Define al menos `ERPSYNC_POSTGRES_PASSWORD`, `ERPSYNC_WP_DB_PASSWORD`, `ERPSYNC_WP_ADMIN_PASSWORD` y `ERPSYNC_WC_WEBHOOK_SECRET` (mínimo 16 caracteres; ver [variables de entorno](docs/variables-de-entorno.md)).
+
+```bash
+# 1. PostgreSQL, el SAP simulado, el hub (se construye desde src/ErpSyncHub.Api/Dockerfile) y la tienda
+docker compose --profile tienda up -d --build --wait
+
+# 2. Instala WordPress y WooCommerce, crea productos con SKU A00001, A00002 y A00010 (artículos del SAP simulado)
+#    y registra los webhooks order.created y order.updated hacia el hub
+docker compose --profile tienda run --rm tienda-setup
+```
+
+La tienda queda en `http://localhost:5203` (usuario `admin`). Haz una compra desde la tienda, o crea un pedido pagado desde la consola:
+
+```bash
+docker compose --profile tienda run --rm --entrypoint wp tienda-setup wc shop_order create --user=admin \
+  --status=processing --line_items='[{"product_id":<id del producto>,"quantity":2}]' \
+  --billing='{"first_name":"Valentina","last_name":"Muñoz","email":"valentina@example.com","country":"CL"}' \
+  --meta_data='[{"key":"_billing_rut","value":"18.765.432-7"}]'
+```
+
+Para seguir lo que pasó:
+
+```bash
+curl http://localhost:5200/health                      # estado de PostgreSQL y SAP
+docker compose logs hub                                # el webhook recibido y el job procesado
+docker compose exec postgres psql -U erpsynchub -c "select external_id, status, sap_doc_entry, last_error_code from sync_jobs"
+```
+
+> **Solo desarrollo.** WordPress bloquea por seguridad los webhooks hacia direcciones privadas y puertos no estándar, que es donde corre el hub en Compose. El plugin [`docker/tienda/mu-plugins/permitir-webhooks-locales.php`](docker/tienda/mu-plugins/permitir-webhooks-locales.php) lo permite solo para los hosts de desarrollo y hace la entrega síncrona; **no debe instalarse en una tienda real**, donde la URL del webhook es pública y HTTPS.
+
+Si prefieres ejecutar el hub fuera de Docker, apunta el webhook a tu máquina con `ERPSYNC_HUB_WEBHOOK_URL=http://host.docker.internal:5210/webhooks/woocommerce/orders`.
 
 ### Desarrollo
 
@@ -112,13 +199,17 @@ dotnet test
 
 Requiere Docker en ejecución. El repositorio se monta como solo lectura y el script trabaja sobre una copia, de modo que no altera tus carpetas `bin/` y `obj/`. La caché de NuGet se conserva en el volumen Docker `erp-sync-hub-nuget`. El código de salida es distinto de 0 si algún paso falla.
 
+Los tests de integración usan [Testcontainers](https://dotnet.testcontainers.org/) con un PostgreSQL real. Para que funcionen desde dentro del contenedor, el script monta el socket del Docker del host (`/var/run/docker.sock`): los contenedores de prueba se crean como "hermanos" en tu Docker y los tests los alcanzan por `host.docker.internal`. Montar el socket da al contenedor de tests control sobre el Docker del host, lo que es aceptable en una máquina de desarrollo; no ejecutes el script con código que no sea de confianza.
+
+En CI (GitHub Actions) no hace falta nada de esto: el runner ya tiene Docker y los tests corren directamente en él.
+
 ## Estado por fase
 
 | Fase | Entregable | Versión | Estado |
 |---|---|---|---|
 | 0 | Cimientos: solución, capas, configuración, tests de arquitectura, Docker Compose, CI, documentación | v0.1.0 | ✅ Completa |
 | 1 | `SapB1.Mock` y `SapB1.Client` (login y renovación de sesión, Items, BusinessPartners, Orders) | v0.2.0 | ✅ Completa |
-| 2 | Webhook con firma HMAC-SHA256, tabla `sync_jobs`, worker con cola en PostgreSQL | v0.3.0 | ⏳ Pendiente |
+| 2 | Webhook con firma HMAC-SHA256, tabla `sync_jobs`, worker con cola en PostgreSQL | v0.3.0 | ✅ Completa |
 | 3 | Sincronización periódica de stock y precios SAP → WooCommerce | v0.4.0 | ⏳ Pendiente |
 | 4 | Backoff, dead letter, panel, reintento manual, simulación de fallas en el mock | v0.5.0 | ⏳ Pendiente |
 | 5 | Despliegue, diagrama final, NuGet de `SapB1.Client`, release automatizado | v1.0.0 | ⏳ Pendiente |
@@ -127,6 +218,7 @@ Requiere Docker en ejecución. El repositorio se monta como solo lectura y el sc
 
 - [SapB1.Mock](docs/sap-mock.md): endpoints, datos semilla y fidelidad al contrato del Service Layer.
 - [SapB1.Client](src/SapB1.Client/README.md): configuración, uso, sesión y errores.
+- [Flujo de pedidos](docs/flujo-de-pedidos.md): secuencia tienda → SAP, estados de un job, configuración y códigos de error.
 
 ## Decisiones de arquitectura
 

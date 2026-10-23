@@ -1,9 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\Fixtures\**\*.json" Link="Fixtures\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\ErpSyncHub.Api\ErpSyncHub.Api.csproj" />
     <ProjectReference Include="..\..\src\ErpSyncHub.Infrastructure\ErpSyncHub.Infrastructure.csproj" />
+    <!-- El mock y la Api exponen una clase Program: el alias evita la ambigüedad. -->
+    <ProjectReference Include="..\..\src\SapB1.Mock\SapB1.Mock.csproj" Aliases="SapMock" />
   </ItemGroup>
 
 </Project>
-

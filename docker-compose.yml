@@ -5,11 +5,11 @@ services:
     image: postgres:17
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-erpsynchub}
-      POSTGRES_USER: ${POSTGRES_USER:-erpsynchub}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env (ver .env.example)}
+      POSTGRES_DB: ${ERPSYNC_POSTGRES_DB:-erpsynchub}
+      POSTGRES_USER: ${ERPSYNC_POSTGRES_USER:-erpsynchub}
+      POSTGRES_PASSWORD: ${ERPSYNC_POSTGRES_PASSWORD:?Define ERPSYNC_POSTGRES_PASSWORD (ver docs/variables-de-entorno.md)}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${ERPSYNC_POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -25,8 +25,51 @@ services:
       dockerfile: src/SapB1.Mock/Dockerfile
     restart: unless-stopped
     ports:
-      - "${SAP_MOCK_PORT:-5100}:8080"
+      - "127.0.0.1:${ERPSYNC_SAP_MOCK_HOST_PORT:-5201}:8080"
 
+  # --- Seq: visor de logs estructurados (http://localhost:${ERPSYNC_SEQ_HOST_PORT:-5202}). SOLO DESARROLLO LOCAL. ---
+  # SEQ_FIRSTRUN_NOAUTHENTICATION desactiva el inicio de sesión para no manejar una contraseña de administrador
+  # en el entorno de desarrollo; nunca se debe usar en un Seq accesible desde fuera de esta máquina.
+  seq:
+    image: datalust/seq:2025.2
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      SEQ_FIRSTRUN_NOAUTHENTICATION: "true"
+    ports:
+      - "127.0.0.1:${ERPSYNC_SEQ_HOST_PORT:-5202}:80"
+    volumes:
+      - seq-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:80/api || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  # --- El hub: API de webhooks y worker. Se configura solo con variables de entorno. ---
+  # Necesita como mínimo ERPSYNC_POSTGRES_PASSWORD y ERPSYNC_WC_WEBHOOK_SECRET en el entorno (ver docs/variables-de-entorno.md).
+  hub:
+    build:
+      context: .
+      dockerfile: src/ErpSyncHub.Api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      sap-mock:
+        condition: service_healthy
+    environment:
+      Database__ConnectionString: Host=postgres;Port=5432;Database=${ERPSYNC_POSTGRES_DB:-erpsynchub};Username=${ERPSYNC_POSTGRES_USER:-erpsynchub};Password=${ERPSYNC_POSTGRES_PASSWORD:?Define ERPSYNC_POSTGRES_PASSWORD (ver docs/variables-de-entorno.md)}
+      Database__MigrateOnStartup: "true"
+      Webhooks__WooCommerce__Secret: ${ERPSYNC_WC_WEBHOOK_SECRET:?Define ERPSYNC_WC_WEBHOOK_SECRET (ver docs/variables-de-entorno.md)}
+      SAP__BaseUrl: http://sap-mock:8080
+      SAP__CompanyDb: ${ERPSYNC_SAP_COMPANY_DB:-SBODemoCL}
+      SAP__UserName: ${ERPSYNC_SAP_USER_NAME:-manager}
+      SAP__Password: ${ERPSYNC_SAP_PASSWORD:-manager}
+      Seq__ServerUrl: http://seq:80
+    ports:
+      - "127.0.0.1:${ERPSYNC_HUB_HOST_PORT:-5200}:8080"
   # --- Tienda WooCommerce (opcional): docker compose --profile tienda up -d ---
   tienda-db:
     image: mysql:8.4
@@ -35,13 +78,13 @@ services:
     environment:
       MYSQL_DATABASE: wordpress
       MYSQL_USER: wordpress
-      MYSQL_PASSWORD: ${WP_DB_PASSWORD:-}
+      MYSQL_PASSWORD: ${ERPSYNC_WP_DB_PASSWORD:-}
       MYSQL_RANDOM_ROOT_PASSWORD: "1"
     entrypoint:
       - sh
       - -c
       - |
-        [ -n "$$MYSQL_PASSWORD" ] || { echo "Define WP_DB_PASSWORD en .env (ver .env.example)" >&2; exit 1; }
+        [ -n "$$MYSQL_PASSWORD" ] || { echo "Define ERPSYNC_WP_DB_PASSWORD (ver docs/variables-de-entorno.md)" >&2; exit 1; }
         exec docker-entrypoint.sh mysqld
     volumes:
       - tienda-db-data:/var/lib/mysql
@@ -63,17 +106,21 @@ services:
       WORDPRESS_DB_HOST: tienda-db
       WORDPRESS_DB_NAME: wordpress
       WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: ${WP_DB_PASSWORD:-}
+      WORDPRESS_DB_PASSWORD: ${ERPSYNC_WP_DB_PASSWORD:-}
     ports:
-      - "${WP_PORT:-8081}:80"
+      - "127.0.0.1:${ERPSYNC_TIENDA_HOST_PORT:-5203}:80"
     entrypoint:
       - sh
       - -c
       - |
-        [ -n "$$WORDPRESS_DB_PASSWORD" ] || { echo "Define WP_DB_PASSWORD en .env (ver .env.example)" >&2; exit 1; }
+        [ -n "$$WORDPRESS_DB_PASSWORD" ] || { echo "Define ERPSYNC_WP_DB_PASSWORD (ver docs/variables-de-entorno.md)" >&2; exit 1; }
         exec docker-entrypoint.sh apache2-foreground
     volumes:
       - tienda-files:/var/www/html
+      # SOLO DESARROLLO: deja que WordPress entregue webhooks al hub local (ver el archivo).
+      - ./docker/tienda/mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   tienda-setup:
     image: wordpress:cli
@@ -86,17 +133,22 @@ services:
       WORDPRESS_DB_HOST: tienda-db
       WORDPRESS_DB_NAME: wordpress
       WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: ${WP_DB_PASSWORD:-}
-      WP_URL: http://localhost:${WP_PORT:-8081}
-      WP_ADMIN_USER: ${WP_ADMIN_USER:-admin}
-      WP_ADMIN_PASSWORD: ${WP_ADMIN_PASSWORD:-}
-      WP_ADMIN_EMAIL: ${WP_ADMIN_EMAIL:-admin@example.com}
+      WORDPRESS_DB_PASSWORD: ${ERPSYNC_WP_DB_PASSWORD:-}
+      WP_URL: http://localhost:${ERPSYNC_TIENDA_HOST_PORT:-5203}
+      WP_ADMIN_USER: ${ERPSYNC_WP_ADMIN_USER:-admin}
+      WP_ADMIN_PASSWORD: ${ERPSYNC_WP_ADMIN_PASSWORD:-}
+      WP_ADMIN_EMAIL: ${ERPSYNC_WP_ADMIN_EMAIL:-admin@example.com}
+      WC_WEBHOOK_SECRET: ${ERPSYNC_WC_WEBHOOK_SECRET:-}
+      HUB_WEBHOOK_URL: ${ERPSYNC_HUB_WEBHOOK_URL:-http://hub:8080/webhooks/woocommerce/orders}
     volumes:
       - tienda-files:/var/www/html
       - ./docker/tienda/instalar-woocommerce.sh:/instalar-woocommerce.sh:ro
+      # El mismo mu-plugin que la tienda: wp-cli también entrega webhooks (por ejemplo, al crear un pedido desde la consola).
+      - ./docker/tienda/mu-plugins:/var/www/html/wp-content/mu-plugins:ro
     entrypoint: ["sh", "/instalar-woocommerce.sh"]
 
 volumes:
   postgres-data:
+  seq-data:
   tienda-db-data:
   tienda-files:

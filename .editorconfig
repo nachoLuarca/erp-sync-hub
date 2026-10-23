@@ -86,6 +86,8 @@ dotnet_analyzer_diagnostic.category-Style.severity = suggestion
 dotnet_diagnostic.IDE0005.severity = warning
 dotnet_diagnostic.CA1848.severity = suggestion
 dotnet_diagnostic.CA2007.severity = none
+# "Queue" es el término del dominio para la cola de trabajos (ADR 0003); la regla supone una colección.
+dotnet_diagnostic.CA1711.severity = none
 
 [**/{Migrations,obj,bin}/**.cs]
 generated_code = true

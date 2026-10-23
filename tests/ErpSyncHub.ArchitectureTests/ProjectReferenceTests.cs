@@ -19,7 +19,7 @@ public class ProjectReferenceTests
         { "src", Layers.SapClient, [] },
         { "src", Layers.SapMock, [] },
         { "tests", Layers.UnitTests, [Layers.Domain, Layers.Application] },
-        { "tests", Layers.IntegrationTests, [Layers.Api, Layers.Infrastructure] },
+        { "tests", Layers.IntegrationTests, [Layers.Api, Layers.Infrastructure, Layers.SapMock] },
         { "tests", Layers.SapMockTests, [Layers.SapMock] },
         { "tests", Layers.SapClientTests, [Layers.SapClient, Layers.SapMock] },
     };
