@@ -83,6 +83,21 @@ public class OrderSyncServiceTests
         _sap.Orders.ShouldHaveSingleItem().Order.Comments.ShouldBe("Pedido WooCommerce #5502");
     }
 
+    [Fact]
+    public async Task Procesa_un_pedido_real_de_WooCommerce_11_de_un_invitado_con_RUT()
+    {
+        var result = await Service().SyncAsync(Job("woocommerce/order-wc11-real.json", storeTotal: 88950m), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue(result.Error?.Message);
+        _sap.CreatedCustomers.ShouldHaveSingleItem().CardCode.ShouldBe("C18765432-7");
+        _mappings.Customers.ShouldContainKey("email:valentina@example.com");
+        var (reference, order, created) = _sap.Orders.ShouldHaveSingleItem();
+        reference.ShouldBe("WC-14");
+        order.Lines.ShouldBe([new NewSapOrderLine("A00001", 2, 39990m), new NewSapOrderLine("A00010", 3, 2990m)]);
+        created.Total.ShouldBe(88950m);
+        _logger.Collector.GetSnapshot().Where(record => record.Level == LogLevel.Warning).ShouldBeEmpty();
+    }
+
     // --- Idempotencia ---
 
     [Fact]

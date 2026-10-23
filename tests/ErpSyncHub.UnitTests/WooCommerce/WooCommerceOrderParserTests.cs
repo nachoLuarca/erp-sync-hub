@@ -97,6 +97,25 @@ public class WooCommerceOrderParserTests
         order.LineItems.ShouldHaveSingleItem().Total.ShouldBe(2990m);
     }
 
+    [Fact]
+    public void Lee_un_pedido_real_creado_en_WooCommerce_11()
+    {
+        var order = Parse("woocommerce/order-wc11-real.json");
+
+        order.Id.ShouldBe(14);
+        order.Status.ShouldBe("processing");
+        order.Currency.ShouldBe("CLP");
+        order.Total.ShouldBe(88950m);
+        order.TotalTax.ShouldBe(0m);
+        order.ShippingTotal.ShouldBe(0m);
+        order.IsGuest.ShouldBeTrue();
+        order.Billing.Email.ShouldBe("valentina@example.com");
+        order.Billing.FullName.ShouldBe("Valentina Muñoz");
+        order.GetMeta("_billing_rut").ShouldBe("18.765.432-7");
+        order.DateCreated.ShouldNotBeNull();
+        order.LineItems.Select(line => (line.Sku, line.Quantity, line.Total)).ShouldBe([("A00001", 2m, 79980m), ("A00010", 3m, 8970m)]);
+    }
+
     [Theory]
     [InlineData("Processing", "processing")]
     [InlineData("COMPLETED", "completed")]

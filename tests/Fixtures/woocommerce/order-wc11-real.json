@@ -1,0 +1,158 @@
+{
+    "id": 14,
+    "total": "88950",
+    "_links": {
+        "self": [
+            {
+                "href": "http://localhost:58082/wp-json/wc/v2/orders/14",
+                "targetHints": {
+                    "allow": [
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "PATCH",
+                        "DELETE"
+                    ]
+                }
+            }
+        ],
+        "collection": [
+            {
+                "href": "http://localhost:58082/wp-json/wc/v2/orders"
+            }
+        ],
+        "email_templates": [
+            {
+                "href": "http://localhost:58082/wp-json/wc/v2/orders/14/actions/email_templates",
+                "embeddable": true
+            }
+        ]
+    },
+    "number": "14",
+    "status": "processing",
+    "billing": {
+        "city": "Providencia",
+        "email": "valentina@example.com",
+        "phone": "+56912345678",
+        "state": "",
+        "company": "",
+        "country": "CL",
+        "postcode": "",
+        "address_1": "Av. Providencia 1234",
+        "address_2": "",
+        "last_name": "Muñoz",
+        "first_name": "Valentina"
+    },
+    "refunds": [
+    ],
+    "version": "11.2.1",
+    "cart_tax": "0",
+    "currency": "CLP",
+    "shipping": {
+        "city": "",
+        "phone": "",
+        "state": "",
+        "company": "",
+        "country": "",
+        "postcode": "",
+        "address_1": "",
+        "address_2": "",
+        "last_name": "",
+        "first_name": ""
+    },
+    "cart_hash": "",
+    "date_paid": "2026-10-23T19:47:53",
+    "fee_lines": [
+    ],
+    "meta_data": [
+        {
+            "id": 114,
+            "key": "_billing_rut",
+            "value": "18.765.432-7"
+        }
+    ],
+    "order_key": "wc_order_rn4DqpjFQTDl5",
+    "parent_id": 0,
+    "tax_lines": [
+    ],
+    "total_tax": "0",
+    "line_items": [
+        {
+            "id": 3,
+            "sku": "A00001",
+            "name": "Taladro percutor 650 W",
+            "image": {
+                "id": "",
+                "src": ""
+            },
+            "price": 39990,
+            "taxes": [
+            ],
+            "total": "79980",
+            "quantity": 2,
+            "subtotal": "79980",
+            "meta_data": [
+            ],
+            "tax_class": "",
+            "total_tax": "0",
+            "product_id": 10,
+            "parent_name": null,
+            "subtotal_tax": "0",
+            "variation_id": 0,
+            "global_unique_id": ""
+        },
+        {
+            "id": 4,
+            "sku": "A00010",
+            "name": "Huincha de medir 5 m",
+            "image": {
+                "id": "",
+                "src": ""
+            },
+            "price": 2990,
+            "taxes": [
+            ],
+            "total": "8970",
+            "quantity": 3,
+            "subtotal": "8970",
+            "meta_data": [
+            ],
+            "tax_class": "",
+            "total_tax": "0",
+            "product_id": 12,
+            "parent_name": null,
+            "subtotal_tax": "0",
+            "variation_id": 0,
+            "global_unique_id": ""
+        }
+    ],
+    "created_via": "rest-api",
+    "customer_id": 0,
+    "is_editable": false,
+    "payment_url": "http://localhost:58082/checkout/order-pay/14/?pay_for_order=true&key=wc_order_rn4DqpjFQTDl5",
+    "coupon_lines": [
+    ],
+    "date_created": "2026-10-23T19:47:52",
+    "discount_tax": "0",
+    "shipping_tax": "0",
+    "customer_note": "",
+    "date_modified": "2026-10-23T19:47:53",
+    "date_paid_gmt": "2026-10-23T19:47:53",
+    "needs_payment": false,
+    "date_completed": null,
+    "discount_total": "0",
+    "payment_method": "",
+    "shipping_lines": [
+    ],
+    "shipping_total": "0",
+    "transaction_id": "",
+    "currency_symbol": "$",
+    "date_created_gmt": "2026-10-23T19:47:52",
+    "needs_processing": true,
+    "date_modified_gmt": "2026-10-23T19:47:53",
+    "date_completed_gmt": null,
+    "prices_include_tax": false,
+    "customer_ip_address": "",
+    "customer_user_agent": "",
+    "payment_method_title": ""
+}

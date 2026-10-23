@@ -90,14 +90,39 @@ dotnet run --project src/ErpSyncHub.Api
 | SAP simulado (Docker) | `http://localhost:5100/health` |
 | PostgreSQL | `localhost:5432` |
 
-Tienda WooCommerce opcional, con WordPress y MySQL:
+### Prueba de punta a punta: WooCommerce → hub → SAP
+
+Con Docker Compose se levanta todo el flujo: PostgreSQL, el SAP simulado, el hub y una tienda WooCommerce real. Define en `.env` al menos `POSTGRES_PASSWORD`, `WP_DB_PASSWORD`, `WP_ADMIN_PASSWORD` y `WC_WEBHOOK_SECRET` (mínimo 16 caracteres; ver `.env.example`).
 
 ```bash
-docker compose --profile tienda up -d
-docker compose --profile tienda run --rm tienda-setup   # instala WordPress y WooCommerce
+# 1. El hub (se construye desde src/ErpSyncHub.Api/Dockerfile) y la tienda
+docker compose --profile hub --profile tienda up -d --build --wait hub tienda
+
+# 2. Instala WordPress y WooCommerce, crea productos con SKU A00001, A00002 y A00010 (artículos del SAP simulado)
+#    y registra los webhooks order.created y order.updated hacia el hub
+docker compose --profile hub --profile tienda run --rm tienda-setup
 ```
 
-La tienda queda en `http://localhost:8081`.
+La tienda queda en `http://localhost:8081` (usuario `admin`). Haz una compra desde la tienda, o crea un pedido pagado desde la consola:
+
+```bash
+docker compose --profile tienda run --rm --entrypoint wp tienda-setup wc shop_order create --user=admin \
+  --status=processing --line_items='[{"product_id":<id del producto>,"quantity":2}]' \
+  --billing='{"first_name":"Valentina","last_name":"Muñoz","email":"valentina@example.com","country":"CL"}' \
+  --meta_data='[{"key":"_billing_rut","value":"18.765.432-7"}]'
+```
+
+Para seguir lo que pasó:
+
+```bash
+curl http://localhost:5191/health                      # estado de PostgreSQL y SAP
+docker compose logs hub                                # el webhook recibido y el job procesado
+docker compose exec postgres psql -U erpsynchub -c "select external_id, status, sap_doc_entry, last_error_code from sync_jobs"
+```
+
+> **Solo desarrollo.** WordPress bloquea por seguridad los webhooks hacia direcciones privadas y puertos no estándar, que es donde corre el hub en Compose. El plugin [`docker/tienda/mu-plugins/permitir-webhooks-locales.php`](docker/tienda/mu-plugins/permitir-webhooks-locales.php) lo permite solo para los hosts de desarrollo y hace la entrega síncrona; **no debe instalarse en una tienda real**, donde la URL del webhook es pública y HTTPS.
+
+Si prefieres ejecutar el hub fuera de Docker, apunta el webhook a tu máquina con `HUB_WEBHOOK_URL=http://host.docker.internal:5191/webhooks/woocommerce/orders` en `.env`.
 
 ### Desarrollo
 

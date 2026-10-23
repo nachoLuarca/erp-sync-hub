@@ -27,6 +27,29 @@ services:
     ports:
       - "${SAP_MOCK_PORT:-5100}:8080"
 
+  # --- El hub (perfil opcional): docker compose --profile hub up -d --build ---
+  # Necesita en .env, como mínimo, POSTGRES_PASSWORD y WC_WEBHOOK_SECRET (ver .env.example).
+  hub:
+    build:
+      context: .
+      dockerfile: src/ErpSyncHub.Api/Dockerfile
+    profiles: [hub]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      sap-mock:
+        condition: service_healthy
+    environment:
+      Database__ConnectionString: Host=postgres;Port=5432;Database=${POSTGRES_DB:-erpsynchub};Username=${POSTGRES_USER:-erpsynchub};Password=${POSTGRES_PASSWORD:-}
+      Database__MigrateOnStartup: "true"
+      Webhooks__WooCommerce__Secret: ${WC_WEBHOOK_SECRET:-}
+      SAP__BaseUrl: http://sap-mock:8080
+      SAP__CompanyDb: ${SAP_COMPANY_DB:-SBODemoCL}
+      SAP__UserName: ${SAP_USER_NAME:-manager}
+      SAP__Password: ${SAP_PASSWORD:-manager}
+    ports:
+      - "${HUB_PORT:-5191}:8080"
   # --- Tienda WooCommerce (opcional): docker compose --profile tienda up -d ---
   tienda-db:
     image: mysql:8.4
@@ -74,6 +97,10 @@ services:
         exec docker-entrypoint.sh apache2-foreground
     volumes:
       - tienda-files:/var/www/html
+      # SOLO DESARROLLO: deja que WordPress entregue webhooks al hub local (ver el archivo).
+      - ./docker/tienda/mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   tienda-setup:
     image: wordpress:cli
@@ -91,9 +118,13 @@ services:
       WP_ADMIN_USER: ${WP_ADMIN_USER:-admin}
       WP_ADMIN_PASSWORD: ${WP_ADMIN_PASSWORD:-}
       WP_ADMIN_EMAIL: ${WP_ADMIN_EMAIL:-admin@example.com}
+      WC_WEBHOOK_SECRET: ${WC_WEBHOOK_SECRET:-}
+      HUB_WEBHOOK_URL: ${HUB_WEBHOOK_URL:-http://hub:8080/webhooks/woocommerce/orders}
     volumes:
       - tienda-files:/var/www/html
       - ./docker/tienda/instalar-woocommerce.sh:/instalar-woocommerce.sh:ro
+      # El mismo mu-plugin que la tienda: wp-cli también entrega webhooks (por ejemplo, al crear un pedido desde la consola).
+      - ./docker/tienda/mu-plugins:/var/www/html/wp-content/mu-plugins:ro
     entrypoint: ["sh", "/instalar-woocommerce.sh"]
 
 volumes:
