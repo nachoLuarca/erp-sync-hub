@@ -174,6 +174,34 @@ public class ApiStartupTests(PostgresFixture postgres)
         Should.NotThrow(() => factory.CreateClient());
     }
 
+    [Fact]
+    public async Task Con_Seq_inalcanzable_el_servicio_arranca_y_responde_igual()
+    {
+        // Puerto 9 (discard) en loopback: nadie escucha, así que cada envío a Seq falla.
+        using var factory = ApiFactory.Create(
+            "Host=localhost",
+            configure: builder => builder.UseSetting("Seq:ServerUrl", "http://127.0.0.1:9"));
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/health", CancellationToken.None);
+
+        response.StatusCode.ShouldNotBe(System.Net.HttpStatusCode.InternalServerError);
+    }
+
+    [Theory]
+    [InlineData("seq:80")]
+    [InlineData("ftp://seq")]
+    public void Una_URL_de_Seq_invalida_impide_arrancar_y_dice_que_variable_corregir(string url)
+    {
+        using var factory = ApiFactory.Create(
+            "Host=localhost",
+            configure: builder => builder.UseSetting("Seq:ServerUrl", url));
+
+        var exception = Should.Throw<Exception>(() => factory.CreateClient());
+
+        exception.ToString().ShouldContain("Seq__ServerUrl");
+    }
+
     private static async Task<long> TableCountAsync(string connectionString)
     {
         await using var connection = new NpgsqlConnection(connectionString);

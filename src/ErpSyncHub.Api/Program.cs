@@ -20,7 +20,22 @@ builder.Host.UseSerilog((context, services, logger) =>
     logger
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)
-        .Enrich.FromLogContext();
+        .Enrich.FromLogContext()
+        .Enrich.WithProperty("Application", "ErpSyncHub");
+
+    // Seq es opcional: sin Seq:ServerUrl el servicio funciona igual, solo con la consola.
+    var seqUrl = context.Configuration["Seq:ServerUrl"];
+    if (!string.IsNullOrWhiteSpace(seqUrl))
+    {
+        if (!Uri.TryCreate(seqUrl, UriKind.Absolute, out var seqUri) || seqUri.Scheme is not ("http" or "https"))
+        {
+            throw new InvalidOperationException(
+                $"Seq:ServerUrl (variable Seq__ServerUrl) debe ser una URL http(s) absoluta, por ejemplo http://seq:80. Valor recibido: '{seqUrl}'.");
+        }
+
+        // El sink envía en segundo plano y por lotes: si Seq está caído o lento, el hub no se detiene ni pierde el log de consola.
+        logger.WriteTo.Seq(seqUri.ToString(), apiKey: context.Configuration["Seq:ApiKey"]);
+    }
 
     if (context.HostingEnvironment.IsDevelopment())
     {

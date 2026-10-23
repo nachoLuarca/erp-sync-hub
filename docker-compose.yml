@@ -27,6 +27,26 @@ services:
     ports:
       - "${SAP_MOCK_PORT:-5100}:8080"
 
+  # --- Seq: visor de logs estructurados (http://localhost:${SEQ_PORT}). SOLO DESARROLLO LOCAL. ---
+  # SEQ_FIRSTRUN_NOAUTHENTICATION desactiva el inicio de sesión para no manejar una contraseña de administrador
+  # en el entorno de desarrollo; nunca se debe usar en un Seq accesible desde fuera de esta máquina.
+  seq:
+    image: datalust/seq:2025.2
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      SEQ_FIRSTRUN_NOAUTHENTICATION: "true"
+    ports:
+      - "${SEQ_PORT:-5341}:80"
+    volumes:
+      - seq-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:80/api || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
   # --- El hub: API de webhooks y worker. Se configura solo con variables de entorno. ---
   # Necesita en .env, como mínimo, POSTGRES_PASSWORD y WC_WEBHOOK_SECRET (ver .env.example).
   hub:
@@ -47,6 +67,7 @@ services:
       SAP__CompanyDb: ${SAP_COMPANY_DB:-SBODemoCL}
       SAP__UserName: ${SAP_USER_NAME:-manager}
       SAP__Password: ${SAP_PASSWORD:-manager}
+      Seq__ServerUrl: http://seq:80
     ports:
       - "${HUB_PORT:-5191}:8080"
   # --- Tienda WooCommerce (opcional): docker compose --profile tienda up -d ---
@@ -128,5 +149,6 @@ services:
 
 volumes:
   postgres-data:
+  seq-data:
   tienda-db-data:
   tienda-files:
