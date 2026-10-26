@@ -39,6 +39,8 @@ public static class DependencyInjection
         services.AddScoped<IJobQueue, PostgresJobQueue>();
         services.AddScoped<IMappingStore, MappingStore>();
         services.AddScoped<IItemSnapshotStore, ItemSnapshotStore>();
+        services.AddScoped<IInventorySyncRunStore, InventorySyncRunStore>();
+        services.AddSingleton<IInventorySyncLock, PostgresInventorySyncLock>();
 
         // PostgreSQL caído es un fallo (el hub no puede guardar pedidos); SAP caído solo degrada (el inbox sigue recibiendo).
         services.AddSingleton<SapHealthCheck>();

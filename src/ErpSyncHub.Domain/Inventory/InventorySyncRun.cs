@@ -164,6 +164,19 @@ public sealed class InventorySyncRun
         return Result.Success();
     }
 
+    /// <summary>Marca la ejecución como abandonada: la instancia que la llevaba cayó antes de cerrarla.</summary>
+    public Result Abandon(DateTimeOffset now)
+    {
+        if (EnsureRunning() is { } notRunning)
+        {
+            return Result.Failure(notRunning);
+        }
+
+        Status = InventorySyncStatus.Abandoned;
+        FinishedAt = now;
+        return Result.Success();
+    }
+
     private ResultError? EnsureRunning() =>
         Status == InventorySyncStatus.Running
             ? null
