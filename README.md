@@ -121,7 +121,7 @@ Los puertos del host se publican solo en `127.0.0.1` y se eligen para no chocar 
 | PostgreSQL | `5433` (`POSTGRES_HOST_PORT`) | — | `localhost:5433` |
 | MySQL de la tienda | sin puerto en el host | — | solo desde la red de Compose |
 
-Seq corre sin autenticación porque es solo para desarrollo local: no lo expongas fuera de tu máquina. Para ver los logs de un pedido, filtra por `JobId = '<id del job>'`.
+Seq corre sin autenticación porque es solo para desarrollo local: no lo expongas fuera de tu máquina. Para ver los logs de un pedido, filtra por `JobId = '<id del job>'`; para los de una sincronización de stock y precios, por `InventoryRunId = '<id de la ejecución>'`.
 
 #### Si un puerto está ocupado
 
@@ -179,6 +179,26 @@ docker compose exec postgres psql -U erpsynchub -c "select external_id, status, 
 
 Si prefieres ejecutar el hub fuera de Docker, apunta el webhook a tu máquina con `ERPSYNC_HUB_WEBHOOK_URL=http://host.docker.internal:5210/webhooks/woocommerce/orders`.
 
+### Prueba de punta a punta: SAP → hub → WooCommerce (stock y precios)
+
+El hub lee los artículos de SAP cada 15 minutos (`ERPSYNC_INVENTORY_INTERVAL`) y envía a la tienda solo el stock y el precio que cambiaron. Para que pueda llamar a la API de WooCommerce hacen falta, además de lo anterior, `ERPSYNC_WC_CONSUMER_KEY` y `ERPSYNC_WC_CONSUMER_SECRET`: son la única fuente de verdad de las credenciales, y [en las variables de entorno](docs/variables-de-entorno.md#credenciales-de-la-api-de-woocommerce) hay un comando de PowerShell para generarlas. `tienda-setup` las registra en WooCommerce, así que basta con levantar el entorno con la tienda. Sin esas variables, el hub arranca igual y avisa en el log que la sincronización de stock y precios queda desactivada.
+
+```bash
+docker compose --profile tienda up -d --build --wait
+docker compose --profile tienda run --rm tienda-setup   # registra la clave de API del hub en WooCommerce
+```
+
+```powershell
+# Cambia el stock y el precio de un artículo en el SAP simulado: en mano 20, comprometido 5 y precio 41990
+Invoke-RestMethod -Method Patch -Uri http://localhost:5201/_mock/items/A00001 -ContentType application/json -Body '{"InStock":20,"Committed":5,"Price":41990}'
+
+# Dispara la sincronización sin esperar al intervalo y mira cuántos artículos se leyeron, actualizaron, omitieron o fallaron
+Invoke-RestMethod -Method Post -Uri http://localhost:5200/admin/sync/inventory
+Invoke-RestMethod -Uri http://localhost:5200/admin/sync/inventory/last
+```
+
+El producto `A00001` de la tienda queda con stock 15 (20 en mano menos 5 comprometidos) y precio 41990. `./scripts/e2e-tienda.ps1` automatiza este recorrido, con varios casos más (stock sobrecomprometido, artículo congelado, precio inválido), contra el entorno levantado con la tienda. El detalle del flujo, el panel y los logs está en [flujo de stock y precios](docs/flujo-de-stock-y-precios.md).
+
 ### Desarrollo
 
 ```bash
@@ -210,7 +230,7 @@ En CI (GitHub Actions) no hace falta nada de esto: el runner ya tiene Docker y l
 | 0 | Cimientos: solución, capas, configuración, tests de arquitectura, Docker Compose, CI, documentación | v0.1.0 | ✅ Completa |
 | 1 | `SapB1.Mock` y `SapB1.Client` (login y renovación de sesión, Items, BusinessPartners, Orders) | v0.2.0 | ✅ Completa |
 | 2 | Webhook con firma HMAC-SHA256, tabla `sync_jobs`, worker con cola en PostgreSQL | v0.3.0 | ✅ Completa |
-| 3 | Sincronización periódica de stock y precios SAP → WooCommerce | v0.4.0 | ⏳ Pendiente |
+| 3 | Sincronización periódica de stock y precios SAP → WooCommerce | v0.4.0 | ✅ Completa |
 | 4 | Backoff, dead letter, panel, reintento manual, simulación de fallas en el mock | v0.5.0 | ⏳ Pendiente |
 | 5 | Despliegue, diagrama final, NuGet de `SapB1.Client`, release automatizado | v1.0.0 | ⏳ Pendiente |
 

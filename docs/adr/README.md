@@ -12,6 +12,7 @@ Cada decisión relevante se documenta en un ADR numerado e inmutable: si una dec
 | [0006](0006-excepciones-tipadas-en-sapb1-client.md) | Excepciones tipadas en SapB1.Client | Aceptada |
 | [0007](0007-inbox-y-cola-con-lease.md) | Inbox y cola con lease para los pedidos de la tienda | Aceptada |
 | [0008](0008-sincronizacion-de-pedidos.md) | Sincronización de pedidos: idempotencia, clientes, productos y precios | Aceptada |
+| [0009](0009-sincronizacion-de-stock-y-precios.md) | Sincronización de stock y precios: lectura incremental, foto sincronizada y exclusión mutua | Aceptada |
 
 ## Plantilla
 
