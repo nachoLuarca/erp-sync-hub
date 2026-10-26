@@ -142,7 +142,7 @@ internal sealed class WebhookHost : IAsyncDisposable
         }
 
         var state = await ScalarAsync<string>(
-            "SELECT coalesce(string_agg(external_id || '=' || status || coalesce('/' || last_error_code || ': ' || left(last_error_message, 300), ''), ', '), 'sin jobs') FROM sync_jobs");
+            "SELECT coalesce(string_agg(external_id || '=' || status || '#' || attempt_count || '/' || cycle_attempts || coalesce('/' || last_error_code || ': ' || left(last_error_message, 300), ''), ', '), 'sin jobs') FROM sync_jobs");
         throw new TimeoutException($"Se agotó el tiempo esperando: {description}. Estado de los jobs: {state}.");
     }
 
