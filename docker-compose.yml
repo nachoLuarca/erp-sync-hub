@@ -68,6 +68,14 @@ services:
       SAP__UserName: ${ERPSYNC_SAP_USER_NAME:-manager}
       SAP__Password: ${ERPSYNC_SAP_PASSWORD:-manager}
       Seq__ServerUrl: http://seq:80
+      # La tienda solo se configura si hay credenciales: sin ellas el hub arranca y la sincronización de stock queda desactivada.
+      Store__WooCommerce__BaseUrl: ${ERPSYNC_WC_BASE_URL:-${ERPSYNC_WC_CONSUMER_KEY:+http://tienda}}
+      Store__WooCommerce__ConsumerKey: ${ERPSYNC_WC_CONSUMER_KEY:-}
+      Store__WooCommerce__ConsumerSecret: ${ERPSYNC_WC_CONSUMER_SECRET:-}
+      Sync__Inventory__Interval: ${ERPSYNC_INVENTORY_INTERVAL:-00:15:00}
+      Sync__Inventory__Warehouses: ${ERPSYNC_INVENTORY_WAREHOUSES:-01}
+      Sync__Inventory__PriceList: ${ERPSYNC_INVENTORY_PRICE_LIST:-1}
+      Sync__Inventory__PriceDecimals: ${ERPSYNC_INVENTORY_PRICE_DECIMALS:-0}
     ports:
       - "127.0.0.1:${ERPSYNC_HUB_HOST_PORT:-5200}:8080"
   # --- Tienda WooCommerce (opcional): docker compose --profile tienda up -d ---
@@ -140,9 +148,13 @@ services:
       WP_ADMIN_EMAIL: ${ERPSYNC_WP_ADMIN_EMAIL:-admin@example.com}
       WC_WEBHOOK_SECRET: ${ERPSYNC_WC_WEBHOOK_SECRET:-}
       HUB_WEBHOOK_URL: ${ERPSYNC_HUB_WEBHOOK_URL:-http://hub:8080/webhooks/woocommerce/orders}
+      # Clave de la API REST que usa el hub; tienda-setup la registra en WooCommerce (docker/tienda/registrar-claves-api.php).
+      WC_CONSUMER_KEY: ${ERPSYNC_WC_CONSUMER_KEY:-}
+      WC_CONSUMER_SECRET: ${ERPSYNC_WC_CONSUMER_SECRET:-}
     volumes:
       - tienda-files:/var/www/html
       - ./docker/tienda/instalar-woocommerce.sh:/instalar-woocommerce.sh:ro
+      - ./docker/tienda/registrar-claves-api.php:/registrar-claves-api.php:ro
       # El mismo mu-plugin que la tienda: wp-cli también entrega webhooks (por ejemplo, al crear un pedido desde la consola).
       - ./docker/tienda/mu-plugins:/var/www/html/wp-content/mu-plugins:ro
     entrypoint: ["sh", "/instalar-woocommerce.sh"]
