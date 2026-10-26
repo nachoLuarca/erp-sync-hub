@@ -25,8 +25,12 @@ public interface IJobQueue
     /// <summary>Cierra el job con éxito. Falla con <c>job.lost_lease</c> si otro worker lo retomó mientras tanto.</summary>
     Task<Result> CompleteAsync(ClaimedJob claim, SapOrderReference order, CancellationToken cancellationToken);
 
-    /// <summary>Cierra el job como fallido. Falla con <c>job.lost_lease</c> si otro worker lo retomó mientras tanto.</summary>
-    Task<Result> FailAsync(ClaimedJob claim, ResultError failure, CancellationToken cancellationToken);
+    /// <summary>
+    /// Registra el fallo del intento y deja el job según <paramref name="decision"/>: esperando para reintentarlo
+    /// (<see cref="RetryAction.RetryLater"/>), en el dead letter (<see cref="RetryAction.DeadLetter"/>) o fallido
+    /// definitivamente (<see cref="RetryAction.Fail"/>). Falla con <c>job.lost_lease</c> si otro worker lo retomó mientras tanto.
+    /// </summary>
+    Task<Result> FailAsync(ClaimedJob claim, ResultError failure, RetryDecision decision, CancellationToken cancellationToken);
 
     /// <summary>
     /// Devuelve el job a la cola sin cerrarlo y deja su intento como abandonado. Lo usa un worker que se apaga para que
@@ -39,7 +43,11 @@ public interface IJobQueue
 /// <param name="Created"><see langword="true"/> si se guardó; <see langword="false"/> si ya estaba.</param>
 public sealed record EnqueueResult(Guid JobId, bool Created);
 
-/// <summary>Un job que un worker tiene tomado, con lo necesario para procesarlo y cerrarlo.</summary>
+/// <summary>
+/// Un job que un worker tiene tomado, con lo necesario para procesarlo y cerrarlo. <c>AttemptNumber</c> cuenta los intentos de
+/// toda la vida del job; <c>CycleAttempt</c>, los del ciclo actual, que son los que cuentan contra el máximo de reintentos
+/// automáticos.
+/// </summary>
 public sealed record ClaimedJob(
     Guid JobId,
     Guid AttemptId,
@@ -49,4 +57,5 @@ public sealed record ClaimedJob(
     string ExternalId,
     string Type,
     string Payload,
-    decimal? StoreTotal);
+    decimal? StoreTotal,
+    int CycleAttempt = 1);

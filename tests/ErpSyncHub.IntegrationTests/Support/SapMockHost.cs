@@ -28,6 +28,20 @@ internal sealed class SapMockHost : IDisposable
         (await admin.PostAsync("/_mock/reset", content: null)).EnsureSuccessStatusCode();
     }
 
+    /// <summary>Activa fallas simuladas en el mock (<c>PUT /_mock/faults</c>), por ejemplo <c>new { Outage = true }</c>.</summary>
+    public async Task SetFaultsAsync(object faults)
+    {
+        using var admin = _factory.CreateClient();
+        (await admin.PutAsJsonAsync("/_mock/faults", faults)).EnsureSuccessStatusCode();
+    }
+
+    /// <summary>Quita todas las fallas simuladas del mock.</summary>
+    public async Task ClearFaultsAsync()
+    {
+        using var admin = _factory.CreateClient();
+        (await admin.DeleteAsync("/_mock/faults")).EnsureSuccessStatusCode();
+    }
+
     /// <summary>Cambia stock, precio o estado de un artículo del mock (<c>PATCH /_mock/items/{itemCode}</c>).</summary>
     public async Task AdjustItemAsync(string itemCode, object changes)
     {

@@ -120,7 +120,8 @@ internal sealed class PostgresJobQueue(ErpSyncHubDbContext context, TimeProvider
                 job.ExternalId,
                 job.Type,
                 job.Payload,
-                job.StoreTotal));
+                job.StoreTotal,
+                job.CycleAttempts));
         }
 
         await context.SaveChangesAsync(cancellationToken);
@@ -141,14 +142,22 @@ internal sealed class PostgresJobQueue(ErpSyncHubDbContext context, TimeProvider
             cancellationToken);
     }
 
-    public Task<Result> FailAsync(ClaimedJob claim, ResultError failure, CancellationToken cancellationToken)
+    public Task<Result> FailAsync(ClaimedJob claim, ResultError failure, RetryDecision decision, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(failure);
+        ArgumentOutOfRangeException.ThrowIfLessThan(decision.Delay, TimeSpan.Zero);
+
         return CloseAsync(
             claim,
             (job, attempt, now) =>
             {
-                var closed = job.MarkFailed(claim.WorkerId, failure, now);
+                var closed = decision.Action switch
+                {
+                    RetryAction.RetryLater => job.ScheduleRetry(claim.WorkerId, failure, now + decision.Delay, now),
+                    RetryAction.DeadLetter => job.MarkDeadLetter(claim.WorkerId, failure, now),
+                    _ => job.MarkFailed(claim.WorkerId, failure, now),
+                };
+
                 return closed.IsFailure ? closed : attempt.Fail(failure, now);
             },
             cancellationToken);

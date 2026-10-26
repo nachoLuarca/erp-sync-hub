@@ -37,6 +37,9 @@ public sealed class RetryPolicy(JobRetryOptions options, Func<double> nextRandom
     /// <summary>Fracción mínima de la espera que conserva el jitter: la espera real está entre este valor y 1.</summary>
     public const double JitterFloor = 0.5;
 
+    /// <summary>Intentos totales de un ciclo antes de pasar al dead letter.</summary>
+    public int MaxAttempts => options.MaxAttempts;
+
     /// <summary>Decide qué hacer tras el fallo de un intento.</summary>
     /// <param name="error">Por qué falló.</param>
     /// <param name="attemptsMade">Intentos hechos en el ciclo actual, contando el que acaba de fallar (desde 1).</param>

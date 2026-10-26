@@ -52,8 +52,9 @@ internal sealed class QueueHarness : IDisposable
     public Task<Result> CompleteAsync(ClaimedJob claim, SapOrderReference order) =>
         UseAsync(queue => queue.CompleteAsync(claim, order, CancellationToken.None));
 
-    public Task<Result> FailAsync(ClaimedJob claim, ResultError error) =>
-        UseAsync(queue => queue.FailAsync(claim, error, CancellationToken.None));
+    /// <summary>Cierra el intento como fallido; sin <paramref name="decision"/>, el job queda fallido de forma definitiva.</summary>
+    public Task<Result> FailAsync(ClaimedJob claim, ResultError error, RetryDecision? decision = null) =>
+        UseAsync(queue => queue.FailAsync(claim, error, decision ?? new RetryDecision(RetryAction.Fail, TimeSpan.Zero), CancellationToken.None));
 
     public Task<Result> ReleaseAsync(ClaimedJob claim) =>
         UseAsync(queue => queue.ReleaseAsync(claim, CancellationToken.None));
