@@ -309,6 +309,21 @@ public sealed class WooCommerceGatewayTests : IDisposable
     }
 
     [Fact]
+    public async Task El_mensaje_de_error_de_la_tienda_no_deja_pasar_el_correo_del_cliente()
+    {
+        _store.RespondNextWith(
+            HttpStatusCode.OK,
+            "{\"update\":[{\"id\":1,\"error\":{\"code\":\"invalid\",\"message\":\"Cliente valentina@example.com sin permiso\",\"data\":{\"status\":400}}}]}");
+        await using var provider = Provider();
+
+        var result = await Gateway(provider).UpdateProductsAsync([new StoreProductUpdate(1, "A", 1, null)], CancellationToken.None);
+
+        var message = result.Value.Single().Error!.Message;
+        message.ShouldContain("[correo]");
+        message.ShouldNotContain("valentina");
+    }
+
+    [Fact]
     public async Task Una_conexion_cortada_a_mitad_de_la_respuesta_es_una_falla_pasajera()
     {
         _store.FailNextWith(new IOException("Unexpected end of stream"));

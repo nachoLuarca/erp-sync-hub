@@ -1,4 +1,5 @@
 using System.Net;
+using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Domain.Common;
 using ErpSyncHub.Domain.Customers;
@@ -242,7 +243,7 @@ internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> o
     }
 
     private static string Describe(Exception exception) =>
-        string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : exception.Message;
+        string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : PersonalDataRedactor.RedactRequired(exception.Message);
 
     private static ResultError Translate(SapB1ApiException exception)
     {
@@ -272,7 +273,8 @@ internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> o
         }
 
         var prefix = parts.Count > 0 ? $" ({string.Join(", ", parts)})" : string.Empty;
-        return string.IsNullOrWhiteSpace(message) ? $"{prefix}." : $"{prefix}: {message}";
+        // SAP escribe sus errores como quiere y puede repetir datos del cliente (su RUT, su correo): se ocultan antes de guardarlos y registrarlos.
+        return string.IsNullOrWhiteSpace(message) ? $"{prefix}." : $"{prefix}: {PersonalDataRedactor.RedactRequired(message)}";
     }
 
     private static SapCustomer? ToCustomer(BusinessPartner? partner) =>

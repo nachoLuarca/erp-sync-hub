@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Store;
 using ErpSyncHub.Domain.Common;
 using Microsoft.Extensions.Options;
@@ -179,7 +180,7 @@ internal sealed class WooCommerceGateway(HttpClient http, IOptions<WooCommerceOp
     private static ResultError TranslateItemError(JsonObject error)
     {
         var code = error["code"]?.GetValue<string>() ?? "desconocido";
-        var message = error["message"]?.GetValue<string>() ?? "Sin detalle.";
+        var message = PersonalDataRedactor.RedactRequired(error["message"]?.GetValue<string>() ?? "Sin detalle.");
         var status = error["data"]?["status"]?.GetValue<int>() ?? 400;
         var detail = $"La tienda rechazó el producto ({code}): {message}";
 
@@ -219,7 +220,7 @@ internal sealed class WooCommerceGateway(HttpClient http, IOptions<WooCommerceOp
         catch (Exception exception) when (exception is HttpRequestException or IOException)
         {
             // Un IOException suelto es una conexión cortada a mitad de la respuesta: igual de pasajero que no poder conectar.
-            var detail = string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : exception.Message;
+            var detail = string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : PersonalDataRedactor.RedactRequired(exception.Message);
             return Result.Failure<JsonNode?>(ResultError.Transient(StoreErrors.Unreachable, $"No se pudo conectar con la tienda: {detail}"));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -255,7 +256,7 @@ internal sealed class WooCommerceGateway(HttpClient http, IOptions<WooCommerceOp
         {
             if (JsonNode.Parse(body) is JsonObject error && error["message"]?.GetValue<string>() is { Length: > 0 } message)
             {
-                return $": {message}";
+                return $": {PersonalDataRedactor.RedactRequired(message)}";
             }
         }
         catch (JsonException)

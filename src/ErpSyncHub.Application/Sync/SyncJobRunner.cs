@@ -1,3 +1,4 @@
+using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Jobs;
 using ErpSyncHub.Domain.Common;
 using ErpSyncHub.Domain.Jobs;
@@ -110,7 +111,7 @@ public sealed partial class SyncJobRunner(
         catch (Exception exception)
         {
             LogUnexpected(exception);
-            failure = ResultError.Unexpected(JobErrors.Unexpected, $"Error inesperado ({exception.GetType().Name}): {exception.Message}");
+            failure = ResultError.Unexpected(JobErrors.Unexpected, $"Error inesperado ({exception.GetType().Name}): {PersonalDataRedactor.RedactRequired(exception.Message)}");
         }
 
         await CloseAsync(claim, outcome, failure);
