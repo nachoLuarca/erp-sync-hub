@@ -11,6 +11,12 @@ public sealed class InventorySyncOptions
     /// <summary>Días que se retrocede la fecha de corte al leer SAP: <c>UpdateDate</c> no trae hora ni zona horaria.</summary>
     public const int OverlapDays = 1;
 
+    /// <summary>
+    /// Permite apagar la sincronización periódica. Aun encendida, solo corre si la tienda está configurada. La sincronización
+    /// manual del panel no depende de este valor.
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+
     /// <summary>Cada cuánto corre la sincronización.</summary>
     public TimeSpan Interval { get; set; } = TimeSpan.FromMinutes(15);
 

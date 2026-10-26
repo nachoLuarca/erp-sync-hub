@@ -42,6 +42,9 @@ internal static class ApiFactory
             builder.UseSetting("SAP:UserName", SapCredentials.UserName);
             builder.UseSetting("SAP:Password", SapCredentials.Password);
 
+            // La sincronización de stock y precios solo corre en los tests que la piden (ver InventorySyncHost).
+            builder.UseSetting("Sync:Inventory:Enabled", "false");
+
             builder.UseSetting("Worker:Enabled", workerEnabled ? "true" : "false");
             builder.UseSetting("Worker:PollInterval", "00:00:00.050");
             builder.UseSetting("Worker:LeaseDuration", "00:01:00");
