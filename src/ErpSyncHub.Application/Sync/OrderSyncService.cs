@@ -111,7 +111,7 @@ public sealed partial class OrderSyncService(
             return Result.Failure<OrderSyncOutcome>(created.Error!);
         }
 
-        LogOrderCreated(order.Id, created.Value.DocEntry, created.Value.DocNum, created.Value.CardCode);
+        LogOrderCreated(order.Id, created.Value.DocEntry, created.Value.DocNum);
         WarnIfTotalsDiffer(order, job.StoreTotal, created.Value.Total);
         return Result.Success(new OrderSyncOutcome(created.Value, AlreadyExisted: false));
     }
@@ -173,7 +173,7 @@ public sealed partial class OrderSyncService(
             {
                 return FailRejected<string>(
                     OrderSyncErrors.InvalidTaxId,
-                    $"El RUT '{rawTaxId}' del pedido {order.Id} no es válido (dígito verificador incorrecto). Corrígelo en la tienda y reintenta.");
+                    $"El RUT del pedido {order.Id} no es válido (dígito verificador incorrecto). Corrígelo en la tienda y reintenta; el valor está en el detalle del job con includePayload=true.");
             }
 
             taxId = rut;
@@ -195,7 +195,7 @@ public sealed partial class OrderSyncService(
             {
                 return FailRejected<string>(
                     OrderSyncErrors.InactiveCustomer,
-                    $"El cliente {existing.CardCode} ({existing.CardName}) está inhabilitado o congelado en SAP.");
+                    $"El cliente de SAP asociado al pedido {order.Id} está inhabilitado o congelado: habilítalo en SAP y reintenta el job.");
             }
 
             await mappings.SaveCustomerMappingAsync(key, existing.CardCode, cancellationToken);
@@ -217,7 +217,7 @@ public sealed partial class OrderSyncService(
         }
 
         await mappings.SaveCustomerMappingAsync(key, ensured.Value.CardCode, cancellationToken);
-        LogCustomerCreated(ensured.Value.CardCode, order.Id);
+        LogCustomerCreated(order.Id);
         return Result.Success(ensured.Value.CardCode);
     }
 
@@ -387,11 +387,12 @@ public sealed partial class OrderSyncService(
     [LoggerMessage(Level = LogLevel.Information, Message = "El pedido {OrderId} ya tenía la orden {DocEntry} (nº {DocNum}) en SAP; no se crea otra")]
     private partial void LogOrderAlreadyExists(long orderId, int docEntry, int docNum);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Cliente {CardCode} creado en SAP para el pedido {OrderId}")]
-    private partial void LogCustomerCreated(string cardCode, long orderId);
+    // Los logs no llevan datos personales: el CardCode de un cliente nuevo se deriva de su RUT, así que no se registra.
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cliente nuevo creado en SAP para el pedido {OrderId}")]
+    private partial void LogCustomerCreated(long orderId);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Orden {DocEntry} (nº {DocNum}) creada en SAP para el pedido {OrderId}, cliente {CardCode}")]
-    private partial void LogOrderCreated(long orderId, int docEntry, int docNum, string cardCode);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Orden {DocEntry} (nº {DocNum}) creada en SAP para el pedido {OrderId}")]
+    private partial void LogOrderCreated(long orderId, int docEntry, int docNum);
 
     [LoggerMessage(
         Level = LogLevel.Warning,

@@ -247,7 +247,8 @@ public class OrderSyncServiceTests
         result.IsFailure.ShouldBeTrue();
         result.Error!.Code.ShouldBe(OrderSyncErrors.InvalidTaxId);
         result.Error.Kind.ShouldBe(ErrorKind.Rejected);
-        result.Error.Message.ShouldContain("18.765.432-1");
+        result.Error.Message.ShouldNotContain("18.765.432-1"); // el RUT es un dato personal: no viaja en el mensaje
+        result.Error.Message.ShouldContain("5501");
         _sap.CreatedCustomers.ShouldBeEmpty();
         _sap.Orders.ShouldBeEmpty();
         _sap.Calls.ShouldNotContain(nameof(FakeSapGateway.FindCustomerByTaxIdAsync));
@@ -272,7 +273,9 @@ public class OrderSyncServiceTests
         var result = await Service().SyncAsync(Job("woocommerce/order-processing.json"), CancellationToken.None);
 
         result.Error!.Code.ShouldBe(OrderSyncErrors.InactiveCustomer);
-        result.Error.Message.ShouldContain("C-CONGELADO");
+        result.Error.Message.ShouldNotContain("C-CONGELADO");
+        result.Error.Message.ShouldNotContain("Valentina");
+        result.Error.Message.ShouldContain("5501");
         _sap.Orders.ShouldBeEmpty();
     }
 
