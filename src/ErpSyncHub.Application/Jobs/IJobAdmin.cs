@@ -24,6 +24,21 @@ public interface IJobAdmin
     /// impide reintentar a los demás. Devuelve un resultado por id, en el orden pedido y sin repetidos.
     /// </summary>
     Task<IReadOnlyList<JobRetryOutcome>> RetryAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken);
+
+    /// <summary>Cuántos jobs hay en cada estado y los indicadores de atraso de la cola.</summary>
+    Task<JobMetrics> GetMetricsAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>Un resumen de la cola de jobs.</summary>
+/// <param name="CountByStatus">Cantidad de jobs en cada estado; incluye todos los estados, también los que tienen cero.</param>
+/// <param name="OldestPendingCreatedAt">Cuándo se creó el job pendiente más antiguo; <see langword="null"/> si no hay ninguno. Un valor viejo indica que los workers no dan abasto o están detenidos.</param>
+/// <param name="NextRetryAt">Cuándo toca el próximo reintento automático; <see langword="null"/> si ninguno espera.</param>
+public sealed record JobMetrics(
+    IReadOnlyDictionary<JobStatus, int> CountByStatus,
+    DateTimeOffset? OldestPendingCreatedAt,
+    DateTimeOffset? NextRetryAt)
+{
+    public int Total => CountByStatus.Values.Sum();
 }
 
 /// <summary>Qué pasó con un job al reintentarlo a mano.</summary>

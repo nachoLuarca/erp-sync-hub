@@ -2,6 +2,7 @@ using ErpSyncHub.Api.Admin;
 using ErpSyncHub.Api.Health;
 using ErpSyncHub.Api.Inventory;
 using ErpSyncHub.Api.Jobs;
+using ErpSyncHub.Api.Metrics;
 using ErpSyncHub.Api.Problems;
 using ErpSyncHub.Api.Sync;
 using ErpSyncHub.Api.Webhooks;
@@ -113,6 +114,7 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 app.MapWooCommerceWebhooks();
 app.MapInventorySync();
 app.MapJobAdmin();
+app.MapMetrics();
 
 app.Run();
 

@@ -134,6 +134,33 @@ internal sealed partial class JobAdmin(ErpSyncHubDbContext context, TimeProvider
         return outcomes;
     }
 
+    public async Task<JobMetrics> GetMetricsAsync(CancellationToken cancellationToken)
+    {
+        var grouped = await context.SyncJobs
+            .AsNoTracking()
+            .GroupBy(job => job.Status)
+            .Select(group => new { Status = group.Key, Count = group.Count() })
+            .ToListAsync(cancellationToken);
+
+        var counts = Enum.GetValues<JobStatus>().ToDictionary(status => status, _ => 0);
+        foreach (var row in grouped)
+        {
+            counts[row.Status] = row.Count;
+        }
+
+        var oldestPending = await context.SyncJobs
+            .AsNoTracking()
+            .Where(job => job.Status == JobStatus.Pending)
+            .MinAsync(job => (DateTimeOffset?)job.CreatedAt, cancellationToken);
+
+        var nextRetry = await context.SyncJobs
+            .AsNoTracking()
+            .Where(job => job.Status == JobStatus.Retrying)
+            .MinAsync(job => job.NextAttemptAt, cancellationToken);
+
+        return new JobMetrics(counts, oldestPending, nextRetry);
+    }
+
     private async Task<JobRetryOutcome> RetryOneAsync(Guid id, CancellationToken cancellationToken)
     {
         var job = await context.SyncJobs.SingleOrDefaultAsync(candidate => candidate.Id == id, cancellationToken);

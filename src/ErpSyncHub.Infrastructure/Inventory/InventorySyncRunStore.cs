@@ -45,6 +45,13 @@ internal sealed class InventorySyncRunStore(ErpSyncHubDbContext context, TimePro
             .ToListAsync(cancellationToken);
     }
 
+    public Task<InventorySyncRun?> GetLastSucceededAsync(CancellationToken cancellationToken) =>
+        context.InventorySyncRuns
+            .AsNoTracking()
+            .Where(run => run.Status == InventorySyncStatus.Succeeded)
+            .OrderByDescending(run => run.StartedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
     public async Task<DateTimeOffset?> GetLastSucceededStartAsync(CancellationToken cancellationToken) =>
         await context.InventorySyncRuns
             .AsNoTracking()
