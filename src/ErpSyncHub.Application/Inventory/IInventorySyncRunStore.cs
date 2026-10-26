@@ -27,6 +27,12 @@ public interface IInventorySyncRunStore
     Task<DateTimeOffset?> GetLastSucceededStartAsync(CancellationToken cancellationToken);
 
     /// <summary>
+    /// Cuándo empezó la última ejecución completa (<see cref="InventorySyncRun.Full"/>) que terminó sin errores, sea programada o
+    /// manual; <see langword="null"/> si ninguna.
+    /// </summary>
+    Task<DateTimeOffset?> GetLastSucceededFullStartAsync(CancellationToken cancellationToken);
+
+    /// <summary>
     /// Cierra como abandonadas las ejecuciones que quedaron en curso. Solo es seguro llamarlo con la exclusión mutua
     /// tomada: ninguna otra instancia puede estar ejecutando una de verdad. Devuelve cuántas cerró.
     /// </summary>

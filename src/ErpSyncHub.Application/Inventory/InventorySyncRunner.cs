@@ -46,9 +46,24 @@ public sealed partial class InventorySyncRunner(
     /// <param name="trigger">Qué la disparó.</param>
     /// <param name="full">Lee todo el maestro y envía todo, ignorando la foto y la fecha de corte.</param>
     /// <param name="cancellationToken">Detiene la ejecución, que queda registrada como fallida.</param>
-    public async Task<Result<InventorySyncRun>> RunAsync(
+    public Task<Result<InventorySyncRun>> RunAsync(
         InventorySyncTrigger trigger,
         bool full,
+        CancellationToken cancellationToken) =>
+        ExecuteAsync(trigger, full, cancellationToken);
+
+    /// <summary>
+    /// Corre la sincronización periódica. Normalmente es incremental, pero cada <see cref="InventorySyncOptions.FullInterval"/>
+    /// toca una completa: el respaldo por si <c>UpdateDate</c> de SAP no refleja algún movimiento de stock y el cambio no
+    /// aparece en la lectura incremental. Si toca o no se decide después de tomar la exclusión mutua, para que dos instancias
+    /// no hagan dos completas seguidas.
+    /// </summary>
+    public Task<Result<InventorySyncRun>> RunScheduledAsync(CancellationToken cancellationToken) =>
+        ExecuteAsync(InventorySyncTrigger.Scheduled, requestedFull: null, cancellationToken);
+
+    private async Task<Result<InventorySyncRun>> ExecuteAsync(
+        InventorySyncTrigger trigger,
+        bool? requestedFull,
         CancellationToken cancellationToken)
     {
         if (!store.IsConfigured)
@@ -74,6 +89,7 @@ public sealed partial class InventorySyncRunner(
             LogAbandoned(abandoned);
         }
 
+        var full = requestedFull ?? await IsFullSyncDueAsync(cancellationToken);
         var changedSince = full ? null : await ChangedSinceAsync(cancellationToken);
         var started = InventorySyncRun.Start(trigger, Instance, full, changedSince, time.GetUtcNow());
         var run = started.Value;
@@ -131,6 +147,28 @@ public sealed partial class InventorySyncRunner(
     }
 
     /// <summary>
+    /// Toca una sincronización completa si nunca hubo una exitosa o si la última empezó hace <see cref="InventorySyncOptions.FullInterval"/>
+    /// o más. Cuenta cualquier completa exitosa, también la manual; las que fallaron o terminaron con errores no cuentan, así que
+    /// la completa se reintenta en el intervalo siguiente. Con un intervalo de cero, nunca.
+    /// </summary>
+    private async Task<bool> IsFullSyncDueAsync(CancellationToken cancellationToken)
+    {
+        if (options.FullInterval <= TimeSpan.Zero)
+        {
+            return false;
+        }
+
+        var lastFull = await runs.GetLastSucceededFullStartAsync(cancellationToken);
+        var due = lastFull is null || time.GetUtcNow() - lastFull >= options.FullInterval;
+        if (due)
+        {
+            LogFullDue(lastFull);
+        }
+
+        return due;
+    }
+
+    /// <summary>
     /// Desde dónde leer SAP: la fecha local de SAP en que empezó la última ejecución sin errores, retrocedida
     /// <see cref="InventorySyncOptions.OverlapDays"/> día. <c>UpdateDate</c> no trae hora ni zona horaria, así que el traslape
     /// absorbe las diferencias de reloj y de zona; la foto descarta lo que ya se envió. Sin ejecución previa, lee todo.
@@ -147,6 +185,9 @@ public sealed partial class InventorySyncRunner(
     }
 
     private static string Truncate(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Toca la sincronización completa de respaldo (última completa exitosa: {LastFull})")]
+    private partial void LogFullDue(DateTimeOffset? lastFull);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Sincronización de stock y precios iniciada (completa: {Full}, desde: {ChangedSince})")]
     private partial void LogStarted(bool full, DateOnly? changedSince);

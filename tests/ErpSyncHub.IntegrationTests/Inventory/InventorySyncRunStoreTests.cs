@@ -107,6 +107,59 @@ public class InventorySyncRunStoreTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task La_ultima_completa_exitosa_ignora_las_incrementales_las_fallidas_y_las_que_terminaron_con_errores()
+    {
+        await using var host = await InfrastructureHost.StartAsync(postgres);
+
+        InventorySyncRun Full(DateTimeOffset startedAt, InventorySyncCounts counts, ResultError? failure = null)
+        {
+            var run = InventorySyncRun.Start(InventorySyncTrigger.Scheduled, "hub-1", full: true, null, startedAt).Value;
+            if (failure is null)
+            {
+                run.Complete(counts, startedAt.AddMinutes(1));
+            }
+            else
+            {
+                run.Fail(failure, counts, startedAt.AddMinutes(1));
+            }
+
+            return run;
+        }
+
+        var okOld = Full(T0, new InventorySyncCounts(1, 1, 0, 0, 0));
+        var okNew = Full(T0.AddHours(1), new InventorySyncCounts(1, 1, 0, 0, 0));
+        var withErrors = Full(T0.AddHours(2), new InventorySyncCounts(1, 0, 0, 0, 1));
+        var failed = Full(T0.AddHours(3), default, ResultError.Transient("x", "y"));
+        var incremental = NewRun(T0.AddHours(4));
+        incremental.Complete(new InventorySyncCounts(1, 1, 0, 0, 0), T0.AddHours(4).AddMinutes(1));
+
+        foreach (var run in new[] { okOld, okNew, withErrors, failed, incremental })
+        {
+            await Add(host, run);
+        }
+
+        var lastFull = await host.UseAsync<IInventorySyncRunStore, DateTimeOffset?>(
+            store => store.GetLastSucceededFullStartAsync(CancellationToken.None));
+        var lastAny = await host.UseAsync<IInventorySyncRunStore, InventorySyncRun?>(
+            store => store.GetLastSucceededAsync(CancellationToken.None));
+
+        lastFull.ShouldBe(T0.AddHours(1));
+        lastAny!.StartedAt.ShouldBe(T0.AddHours(4)); // la última exitosa de cualquier tipo es la incremental
+    }
+
+    [Fact]
+    public async Task Sin_ninguna_completa_exitosa_no_hay_fecha()
+    {
+        await using var host = await InfrastructureHost.StartAsync(postgres);
+        var incremental = NewRun(T0);
+        incremental.Complete(default, T0.AddMinutes(1));
+        await Add(host, incremental);
+
+        (await host.UseAsync<IInventorySyncRunStore, DateTimeOffset?>(store => store.GetLastSucceededFullStartAsync(CancellationToken.None)))
+            .ShouldBeNull();
+    }
+
+    [Fact]
     public async Task Abandonar_cierra_solo_las_que_estaban_en_curso()
     {
         await using var host = await InfrastructureHost.StartAsync(postgres);

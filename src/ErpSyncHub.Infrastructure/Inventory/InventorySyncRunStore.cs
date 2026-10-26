@@ -60,6 +60,14 @@ internal sealed class InventorySyncRunStore(ErpSyncHubDbContext context, TimePro
             .Select(run => (DateTimeOffset?)run.StartedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
+    public async Task<DateTimeOffset?> GetLastSucceededFullStartAsync(CancellationToken cancellationToken) =>
+        await context.InventorySyncRuns
+            .AsNoTracking()
+            .Where(run => run.Status == InventorySyncStatus.Succeeded && run.Full)
+            .OrderByDescending(run => run.StartedAt)
+            .Select(run => (DateTimeOffset?)run.StartedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
     public async Task<int> AbandonRunningAsync(CancellationToken cancellationToken)
     {
         var stale = await context.InventorySyncRuns
