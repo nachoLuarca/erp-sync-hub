@@ -97,6 +97,29 @@ internal sealed record JobAttemptResponse(
             attempt.ErrorCode is null ? null : new JobErrorResponse(attempt.ErrorCode, attempt.ErrorMessage ?? string.Empty));
 }
 
+/// <summary>Los jobs que se quieren reintentar a mano.</summary>
+/// <param name="Ids">Identificadores de los jobs; hasta <see cref="MaxIds"/>.</param>
+internal sealed record RetryJobsRequest(IReadOnlyList<Guid>? Ids)
+{
+    public const int MaxIds = 100;
+}
+
+internal sealed record RetryJobResultResponse(Guid Id, string Outcome, string? Status, string? Message);
+
+/// <summary>Qué pasó con cada job de un reintento manual.</summary>
+internal sealed record RetryJobsResponse(int Requested, int Retried, IReadOnlyList<RetryJobResultResponse> Results)
+{
+    public static RetryJobsResponse From(IReadOnlyList<JobRetryOutcome> outcomes) =>
+        new(
+            outcomes.Count,
+            outcomes.Count(outcome => outcome.Result == JobRetryResult.Retried),
+            [.. outcomes.Select(outcome => new RetryJobResultResponse(
+                outcome.JobId,
+                JobWireNames.ToWire(outcome.Result),
+                outcome.Job is null ? null : JobWireNames.ToWire(outcome.Job.Status),
+                outcome.Message))]);
+}
+
 /// <summary>El detalle de un job: sus datos, sus intentos y, solo si se pidió, el payload de la tienda.</summary>
 internal sealed record JobDetailResponse(
     JobSummaryResponse Job,

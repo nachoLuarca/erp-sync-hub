@@ -17,7 +17,36 @@ public interface IJobAdmin
     /// <param name="includePayload">Si es verdadero, incluye el cuerpo JSON de la tienda, que contiene datos personales.</param>
     /// <param name="cancellationToken">Cancela la consulta.</param>
     Task<JobDetail?> GetAsync(Guid jobId, bool includePayload, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reintento manual (ver <c>SyncJob.RetryNow</c>): deja cada job disponible de inmediato con un presupuesto de intentos nuevo.
+    /// Cada job se procesa por separado: que uno no se pueda reintentar (no existe, está en proceso o ya terminó con éxito) no
+    /// impide reintentar a los demás. Devuelve un resultado por id, en el orden pedido y sin repetidos.
+    /// </summary>
+    Task<IReadOnlyList<JobRetryOutcome>> RetryAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken);
 }
+
+/// <summary>Qué pasó con un job al reintentarlo a mano.</summary>
+public enum JobRetryResult
+{
+    /// <summary>Quedó disponible para que un worker lo tome.</summary>
+    Retried,
+
+    /// <summary>No existe.</summary>
+    NotFound,
+
+    /// <summary>No se puede reintentar: está en proceso o ya terminó con éxito.</summary>
+    NotRetryable,
+
+    /// <summary>Un worker lo tomó mientras se reintentaba; se puede volver a intentar.</summary>
+    Conflict,
+}
+
+/// <param name="JobId">El job.</param>
+/// <param name="Result">Qué pasó.</param>
+/// <param name="Job">El job tras el reintento; <see langword="null"/> si no existe.</param>
+/// <param name="Message">Por qué no se pudo reintentar; <see langword="null"/> si se reintentó.</param>
+public sealed record JobRetryOutcome(Guid JobId, JobRetryResult Result, JobSummary? Job, string? Message);
 
 /// <summary>Qué jobs listar. Los criterios que se dejan vacíos no filtran.</summary>
 /// <param name="Statuses">Solo jobs en alguno de estos estados.</param>

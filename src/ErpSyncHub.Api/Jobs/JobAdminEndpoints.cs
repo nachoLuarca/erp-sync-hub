@@ -32,7 +32,67 @@ internal static class JobAdminEndpoints
             .Produces<JobDetailResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status401Unauthorized);
+
+        group.MapPost("/{id:guid}/retry", RetryOneAsync)
+            .WithName("RetryJob")
+            .WithSummary("Reintenta un job a mano.")
+            .WithDescription(
+                "Deja el job disponible de inmediato con un presupuesto de intentos nuevo; el historial de intentos y el último error se " +
+                "conservan. Sirve para un job fallido (después de corregir el dato), en el dead letter o esperando su reintento. Responde " +
+                "409 si el job está en proceso o ya terminó con éxito.")
+            .Produces<JobSummaryResponse>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
+
+        group.MapPost("/retry", RetryManyAsync)
+            .WithName("RetryJobs")
+            .WithSummary("Reintenta varios jobs a mano.")
+            .WithDescription(
+                "Recibe hasta 100 ids. Responde 200 con un resultado por id: que uno no se pueda reintentar no impide reintentar a los " +
+                "demás.")
+            .Produces<RetryJobsResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
     }
+
+    private static async Task<IResult> RetryOneAsync(Guid id, IJobAdmin jobs, CancellationToken cancellationToken)
+    {
+        var outcome = (await jobs.RetryAsync([id], cancellationToken)).Single();
+
+        return outcome.Result switch
+        {
+            JobRetryResult.Retried => Results.Ok(JobSummaryResponse.From(outcome.Job!)),
+            JobRetryResult.NotFound => ProblemDetailsSetup.Problem(StatusCodes.Status404NotFound, outcome.Message!),
+            JobRetryResult.NotRetryable => Conflict("job.not_retryable", outcome.Message!),
+            _ => Conflict("job.conflict", outcome.Message!),
+        };
+    }
+
+    private static async Task<IResult> RetryManyAsync(RetryJobsRequest? request, IJobAdmin jobs, CancellationToken cancellationToken)
+    {
+        var ids = request?.Ids?.Distinct().ToList() ?? [];
+        if (ids.Count == 0)
+        {
+            return ProblemDetailsSetup.Problem(StatusCodes.Status400BadRequest, "Indica en ids al menos un job para reintentar.");
+        }
+
+        if (ids.Count > RetryJobsRequest.MaxIds)
+        {
+            return ProblemDetailsSetup.Problem(StatusCodes.Status400BadRequest, $"Se pueden reintentar hasta {RetryJobsRequest.MaxIds} jobs por solicitud.");
+        }
+
+        var outcomes = await jobs.RetryAsync(ids, cancellationToken);
+        return Results.Ok(RetryJobsResponse.From(outcomes));
+    }
+
+    private static IResult Conflict(string code, string detail) =>
+        Results.Problem(
+            statusCode: StatusCodes.Status409Conflict,
+            title: ProblemDetailsSetup.TitleFor(StatusCodes.Status409Conflict),
+            type: ProblemDetailsSetup.TypeFor(StatusCodes.Status409Conflict),
+            detail: detail,
+            extensions: new Dictionary<string, object?> { ["code"] = code });
 
     private static async Task<IResult> ListAsync(
         string[]? status,

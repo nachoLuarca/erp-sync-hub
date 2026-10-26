@@ -1,12 +1,38 @@
+using System.Linq.Expressions;
 using ErpSyncHub.Application.Jobs;
+using ErpSyncHub.Domain.Jobs;
 using ErpSyncHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace ErpSyncHub.Infrastructure.Jobs;
 
-/// <summary>Consultas del panel sobre <c>sync_jobs</c> y <c>sync_attempts</c>. Todo es de solo lectura y sin seguimiento de cambios.</summary>
-internal sealed class JobAdmin(ErpSyncHubDbContext context) : IJobAdmin
+/// <summary>Consultas y reintentos manuales del panel sobre <c>sync_jobs</c> y <c>sync_attempts</c>.</summary>
+internal sealed partial class JobAdmin(ErpSyncHubDbContext context, TimeProvider time, ILogger<JobAdmin> logger) : IJobAdmin
 {
+    // La misma proyección sirve para consultar en la base de datos y para convertir un job que ya está en memoria.
+    private static readonly Expression<Func<SyncJob, JobSummary>> ToSummary = job => new JobSummary(
+        job.Id,
+        job.Source,
+        job.ExternalId,
+        job.Type,
+        job.Status,
+        job.AttemptCount,
+        job.CycleAttempts,
+        job.NextAttemptAt,
+        job.LastErrorCode,
+        job.LastErrorMessage,
+        job.CreatedAt,
+        job.UpdatedAt,
+        job.FinishedAt,
+        job.SapDocEntry,
+        job.SapDocNum,
+        job.SapCardCode,
+        job.StoreTotal,
+        job.SapTotal);
+
+    private static readonly Func<SyncJob, JobSummary> Summarize = ToSummary.Compile();
+
     public async Task<JobPage> ListAsync(JobFilter filter, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(filter);
@@ -49,25 +75,7 @@ internal sealed class JobAdmin(ErpSyncHubDbContext context) : IJobAdmin
             .ThenByDescending(job => job.Id)
             .Skip((filter.Page - 1) * filter.PageSize)
             .Take(filter.PageSize)
-            .Select(job => new JobSummary(
-                job.Id,
-                job.Source,
-                job.ExternalId,
-                job.Type,
-                job.Status,
-                job.AttemptCount,
-                job.CycleAttempts,
-                job.NextAttemptAt,
-                job.LastErrorCode,
-                job.LastErrorMessage,
-                job.CreatedAt,
-                job.UpdatedAt,
-                job.FinishedAt,
-                job.SapDocEntry,
-                job.SapDocNum,
-                job.SapCardCode,
-                job.StoreTotal,
-                job.SapTotal))
+            .Select(ToSummary)
             .ToListAsync(cancellationToken);
 
         return new JobPage(items, filter.Page, filter.PageSize, total);
@@ -78,25 +86,7 @@ internal sealed class JobAdmin(ErpSyncHubDbContext context) : IJobAdmin
         var summary = await context.SyncJobs
             .AsNoTracking()
             .Where(job => job.Id == jobId)
-            .Select(job => new JobSummary(
-                job.Id,
-                job.Source,
-                job.ExternalId,
-                job.Type,
-                job.Status,
-                job.AttemptCount,
-                job.CycleAttempts,
-                job.NextAttemptAt,
-                job.LastErrorCode,
-                job.LastErrorMessage,
-                job.CreatedAt,
-                job.UpdatedAt,
-                job.FinishedAt,
-                job.SapDocEntry,
-                job.SapDocNum,
-                job.SapCardCode,
-                job.StoreTotal,
-                job.SapTotal))
+            .Select(ToSummary)
             .SingleOrDefaultAsync(cancellationToken);
 
         if (summary is null)
@@ -126,4 +116,53 @@ internal sealed class JobAdmin(ErpSyncHubDbContext context) : IJobAdmin
 
         return new JobDetail(summary, attempts, payload);
     }
+
+    public async Task<IReadOnlyList<JobRetryOutcome>> RetryAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(jobIds);
+
+        var ids = jobIds.Distinct().ToList();
+        var outcomes = new List<JobRetryOutcome>(ids.Count);
+
+        foreach (var id in ids)
+        {
+            outcomes.Add(await RetryOneAsync(id, cancellationToken));
+        }
+
+        var retried = outcomes.Count(outcome => outcome.Result == JobRetryResult.Retried);
+        LogRetried(retried, ids.Count);
+        return outcomes;
+    }
+
+    private async Task<JobRetryOutcome> RetryOneAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var job = await context.SyncJobs.SingleOrDefaultAsync(candidate => candidate.Id == id, cancellationToken);
+        if (job is null)
+        {
+            return new JobRetryOutcome(id, JobRetryResult.NotFound, null, $"No existe el job {id}.");
+        }
+
+        var retried = job.RetryNow(time.GetUtcNow());
+        if (retried.IsFailure)
+        {
+            return new JobRetryOutcome(id, JobRetryResult.NotRetryable, Summarize(job), retried.Error!.Message);
+        }
+
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Un worker tomó el job entre la lectura y la escritura; el seguimiento de cambios se limpia para no arrastrar el estado a medias.
+            context.ChangeTracker.Clear();
+            var current = await context.SyncJobs.AsNoTracking().Where(candidate => candidate.Id == id).Select(ToSummary).SingleOrDefaultAsync(cancellationToken);
+            return new JobRetryOutcome(id, JobRetryResult.Conflict, current, $"Un worker tomó el job {id} mientras se reintentaba: vuelve a intentarlo.");
+        }
+
+        return new JobRetryOutcome(id, JobRetryResult.Retried, Summarize(job), null);
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Reintento manual desde el panel: {Retried} de {Requested} jobs quedaron disponibles")]
+    private partial void LogRetried(int retried, int requested);
 }
