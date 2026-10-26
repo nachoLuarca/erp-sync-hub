@@ -30,6 +30,21 @@ public interface ISapGateway
     Task<Result<SapItem?>> GetItemAsync(string itemCode, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Lee una página del maestro de artículos para sincronizar stock y precios, ordenada por <c>ItemCode</c>. La paginación es
+    /// por clave: la página siguiente se pide con el último <c>ItemCode</c> recibido, así que no se salta ni repite ningún
+    /// artículo aunque cambien mientras se lee. Una página con menos de <paramref name="pageSize"/> artículos es la última.
+    /// </summary>
+    /// <param name="changedSince">Solo artículos modificados desde esa fecha de SAP (inclusive); <see langword="null"/> lee todo.</param>
+    /// <param name="afterItemCode">Devuelve solo los artículos con un <c>ItemCode</c> mayor; <see langword="null"/> empieza desde el principio.</param>
+    /// <param name="pageSize">Cantidad máxima de artículos de la página.</param>
+    /// <param name="cancellationToken">Cancela la lectura.</param>
+    Task<Result<IReadOnlyList<SapInventoryItem>>> GetInventoryPageAsync(
+        DateOnly? changedSince,
+        string? afterItemCode,
+        int pageSize,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Busca la orden de venta que se creó para un pedido, por la referencia del cliente (<c>NumAtCard</c>).
     /// Devuelve éxito con <see langword="null"/> si no existe.
     /// </summary>
@@ -118,3 +133,29 @@ public static class SapErrors
     /// <summary>SAP dijo que el cliente ya existe, pero luego no se pudo leer.</summary>
     public const string CustomerConflict = "sap.customer_conflict";
 }
+
+/// <summary>Lo que el hub lee de un artículo para sincronizar su stock y su precio.</summary>
+/// <param name="ItemCode">Código del artículo.</param>
+/// <param name="IsActive">Falso si el artículo está inhabilitado o congelado.</param>
+/// <param name="UpdatedOn">Fecha de la última modificación, en la fecha local de SAP (sin zona horaria).</param>
+/// <param name="UpdatedAt">Hora de la última modificación, en la hora local de SAP (sin zona horaria).</param>
+/// <param name="Warehouses">Existencias por almacén, de todos los almacenes del artículo.</param>
+/// <param name="Prices">Precio en cada lista de precios, de todas las listas del artículo.</param>
+public sealed record SapInventoryItem(
+    string ItemCode,
+    bool IsActive,
+    DateOnly? UpdatedOn,
+    TimeOnly? UpdatedAt,
+    IReadOnlyList<SapWarehouseStock> Warehouses,
+    IReadOnlyList<SapItemPrice> Prices);
+
+/// <summary>Existencias de un artículo en un almacén.</summary>
+/// <param name="WarehouseCode">Código del almacén.</param>
+/// <param name="InStock">Stock físico (en mano).</param>
+/// <param name="Committed">Comprometido en órdenes de venta aún no entregadas.</param>
+public sealed record SapWarehouseStock(string WarehouseCode, decimal InStock, decimal Committed);
+
+/// <summary>Precio de un artículo en una lista de precios.</summary>
+/// <param name="PriceList">Número de la lista.</param>
+/// <param name="Price">Precio; <see langword="null"/> si la lista no tiene precio para el artículo.</param>
+public sealed record SapItemPrice(int PriceList, decimal? Price);

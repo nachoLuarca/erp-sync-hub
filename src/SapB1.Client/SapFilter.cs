@@ -19,6 +19,13 @@ public static class SapFilter
         return $"{property} eq {Quote(value)}";
     }
 
+    /// <summary><c>Propiedad gt 'valor'</c>.</summary>
+    public static string Greater(string property, string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(property);
+        return $"{property} gt {Quote(value)}";
+    }
+
     /// <summary><c>Propiedad ge 'yyyy-MM-dd'</c>: el formato de fecha que acepta el Service Layer.</summary>
     public static string GreaterOrEqual(string property, DateOnly value)
     {

@@ -54,4 +54,10 @@ public class SapFilterTests
     {
         Should.Throw<ArgumentException>(() => SapFilter.GreaterOrEqual("", new DateOnly(2026, 1, 1)));
     }
+
+    [Fact]
+    public void Greater_arma_la_comparacion_con_el_valor_escapado()
+    {
+        SapFilter.Greater("ItemCode", "A'1").ShouldBe("ItemCode gt 'A''1'");
+    }
 }
