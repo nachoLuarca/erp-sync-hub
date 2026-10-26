@@ -254,6 +254,30 @@ public sealed class ItemsTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task El_articulo_informa_la_fecha_y_la_hora_de_su_ultima_modificacion()
+    {
+        var response = await _client.GetWithSessionAsync("/b1s/v1/Items('A00001')", _sessionId);
+
+        using var body = await response.ReadJsonAsync();
+        body.RootElement.GetProperty("UpdateDate").GetString().ShouldBe("2026-01-15");
+        body.RootElement.GetProperty("UpdateTime").GetString().ShouldBe("09:00:00");
+    }
+
+    [Fact]
+    public async Task Filter_por_UpdateDate_compara_fechas_en_formato_ISO()
+    {
+        var before = await _client.GetWithSessionAsync(
+            $"/b1s/v1/Items?$filter={Uri.EscapeDataString("UpdateDate ge '2026-01-15'")}&$select=ItemCode", _sessionId, AllRows);
+        var after = await _client.GetWithSessionAsync(
+            $"/b1s/v1/Items?$filter={Uri.EscapeDataString("UpdateDate ge '2026-01-16'")}&$select=ItemCode", _sessionId, AllRows);
+
+        using var beforeBody = await before.ReadJsonAsync();
+        using var afterBody = await after.ReadJsonAsync();
+        Codes(beforeBody).Length.ShouldBe(24);
+        Codes(afterBody).ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task Inlinecount_informa_el_total_de_filas_que_cumplen_el_filtro()
     {
         var response = await _client.GetWithSessionAsync(

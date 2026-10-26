@@ -16,6 +16,12 @@ public sealed record Item
     /// <summary>Congelado: <see cref="YesNo.Yes"/> o <see cref="YesNo.No"/>.</summary>
     public string? Frozen { get; init; }
 
+    /// <summary>Fecha de la última modificación del artículo, en la fecha local de SAP (sin zona horaria).</summary>
+    public DateOnly? UpdateDate { get; init; }
+
+    /// <summary>Hora de la última modificación del artículo, en la hora local de SAP (sin zona horaria).</summary>
+    public TimeOnly? UpdateTime { get; init; }
+
     /// <summary>Stock total, suma de todos los almacenes.</summary>
     public decimal QuantityOnStock { get; init; }
 

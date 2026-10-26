@@ -31,7 +31,7 @@ Todo `/b1s/v1` salvo `Login` exige la cookie `B1SESSION`; sin una sesión vigent
 |---|---|
 | `POST /b1s/v1/Login` | `200` con `SessionId`, `Version`, `SessionTimeout` y las cookies `B1SESSION` y `ROUTEID`. |
 | `POST /b1s/v1/Logout` | `204`. |
-| `GET /b1s/v1/Items` · `Items('A00001')` | Maestro de artículos (solo lectura). |
+| `GET /b1s/v1/Items` · `Items('A00001')` | Maestro de artículos (solo lectura). Incluye `UpdateDate` y `UpdateTime` (hora local de SAP), que se actualizan al comprometer stock: permiten la lectura incremental. |
 | `GET /b1s/v1/BusinessPartners` · `BusinessPartners('C00001')` | Clientes y proveedores. |
 | `POST /b1s/v1/BusinessPartners` | `201` con el socio creado. Sin `CardCode`, asigna el siguiente de la serie. |
 | `PATCH /b1s/v1/BusinessPartners('C00001')` | `204`. Mezcla lo enviado sobre el estado actual y revalida. |
@@ -51,6 +51,7 @@ Fuera del contrato de SAP y sin sesión; sirven para pruebas automáticas y para
 |---|---|
 | `POST /_mock/reset` | Restaura artículos, socios y órdenes a los datos semilla, y reinicia la numeración. |
 | `POST /_mock/sessions/expire` | Invalida todas las sesiones abiertas, como si hubieran expirado. |
+| `PATCH /_mock/items/{itemCode}` | Cambia stock físico (`InStock`), comprometido (`Committed`), precio (`Price`) o congela el artículo (`Frozen`); `WarehouseCode` y `PriceList` eligen el almacén y la lista (por defecto `01` y `1`). Actualiza `UpdateDate`/`UpdateTime`. Responde 204, 404 si no existe o 400 con valores negativos. |
 
 ## Datos semilla
 

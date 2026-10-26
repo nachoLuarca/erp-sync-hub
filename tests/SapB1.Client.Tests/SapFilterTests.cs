@@ -42,4 +42,22 @@ public class SapFilterTests
     {
         SapFilter.And("a eq 1").ShouldBe("(a eq 1)");
     }
+
+    [Fact]
+    public void GreaterOrEqual_formatea_la_fecha_en_ISO()
+    {
+        SapFilter.GreaterOrEqual("UpdateDate", new DateOnly(2026, 10, 3)).ShouldBe("UpdateDate ge '2026-10-03'");
+    }
+
+    [Fact]
+    public void GreaterOrEqual_exige_la_propiedad()
+    {
+        Should.Throw<ArgumentException>(() => SapFilter.GreaterOrEqual("", new DateOnly(2026, 1, 1)));
+    }
+
+    [Fact]
+    public void Greater_arma_la_comparacion_con_el_valor_escapado()
+    {
+        SapFilter.Greater("ItemCode", "A'1").ShouldBe("ItemCode gt 'A''1'");
+    }
 }

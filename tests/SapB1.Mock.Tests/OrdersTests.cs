@@ -234,6 +234,23 @@ public sealed class OrdersTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task Comprometer_stock_actualiza_la_fecha_y_la_hora_de_modificacion_del_articulo()
+    {
+        // El maestro se siembra al primer uso: se toca antes de mover el reloj para fijar su fecha semilla.
+        (await _client.GetWithSessionAsync("/b1s/v1/Items('A00002')", _sessionId)).EnsureSuccessStatusCode();
+        _factory.Time.Advance(TimeSpan.FromDays(2) + TimeSpan.FromMinutes(30));
+        _sessionId = await _client.LoginAsync();
+
+        await Post(new { CardCode = "C00001", DocumentLines = new[] { new { ItemCode = "A00001", Quantity = 1 } } });
+
+        using var changed = await (await _client.GetWithSessionAsync("/b1s/v1/Items('A00001')", _sessionId)).ReadJsonAsync();
+        changed.RootElement.GetProperty("UpdateDate").GetString().ShouldBe("2026-01-17");
+        changed.RootElement.GetProperty("UpdateTime").GetString().ShouldBe("09:30:00");
+        using var untouched = await (await _client.GetWithSessionAsync("/b1s/v1/Items('A00002')", _sessionId)).ReadJsonAsync();
+        untouched.RootElement.GetProperty("UpdateDate").GetString().ShouldBe("2026-01-15");
+    }
+
+    [Fact]
     public async Task Una_linea_invalida_no_crea_la_orden_ni_compromete_stock()
     {
         var response = await Post(new

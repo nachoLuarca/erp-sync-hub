@@ -97,6 +97,47 @@ internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> o
             },
             cancellationToken);
 
+    public Task<Result<IReadOnlyList<SapInventoryItem>>> GetInventoryPageAsync(
+        DateOnly? changedSince,
+        string? afterItemCode,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+
+        var conditions = new List<string>();
+        if (changedSince is { } since)
+        {
+            conditions.Add(SapFilter.GreaterOrEqual("UpdateDate", since));
+        }
+
+        if (afterItemCode is not null)
+        {
+            conditions.Add(SapFilter.Greater("ItemCode", afterItemCode));
+        }
+
+        var query = new SapQuery
+        {
+            Filter = conditions.Count == 0 ? null : SapFilter.And([.. conditions]),
+            OrderBy = "ItemCode",
+            Top = pageSize,
+            Select = ["ItemCode", "Valid", "Frozen", "UpdateDate", "UpdateTime", "ItemPrices", "ItemWarehouseInfoCollection"],
+        };
+
+        return ExecuteAsync<IReadOnlyList<SapInventoryItem>>(
+            async () =>
+            {
+                var items = new List<SapInventoryItem>(pageSize);
+                await foreach (var item in sap.Items.QueryAsync(query, cancellationToken))
+                {
+                    items.Add(ToInventoryItem(item));
+                }
+
+                return items;
+            },
+            cancellationToken);
+    }
+
     public Task<Result<SapOrderReference?>> FindOrderByReferenceAsync(string reference, CancellationToken cancellationToken) =>
         ExecuteAsync(
             async () =>
@@ -239,6 +280,15 @@ internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> o
                 partner.FederalTaxID,
                 partner.EmailAddress,
                 partner.Valid != YesNo.No && partner.Frozen != YesNo.Yes);
+
+    private static SapInventoryItem ToInventoryItem(Item item) =>
+        new(
+            item.ItemCode,
+            item.Valid != YesNo.No && item.Frozen != YesNo.Yes,
+            item.UpdateDate,
+            item.UpdateTime,
+            [.. item.ItemWarehouseInfoCollection.Select(w => new SapWarehouseStock(w.WarehouseCode, w.InStock, w.Committed))],
+            [.. item.ItemPrices.Select(p => new SapItemPrice(p.PriceList, p.Price))]);
 
     private static SapOrderReference ToReference(Order order) =>
         new(order.DocEntry, order.DocNum, order.CardCode, order.DocTotal);

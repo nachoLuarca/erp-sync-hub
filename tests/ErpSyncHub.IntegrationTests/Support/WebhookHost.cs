@@ -24,6 +24,9 @@ internal sealed class WebhookHost : IAsyncDisposable
 
     public HttpClient Client { get; }
 
+    /// <summary>Los servicios de la Api en ejecución, para tomar una pieza (por ejemplo, el lock de la sincronización).</summary>
+    public IServiceProvider Services => _factory.Services;
+
     public string ConnectionString { get; }
 
     /// <param name="postgres">PostgreSQL compartido de las pruebas.</param>
@@ -52,8 +55,12 @@ internal sealed class WebhookHost : IAsyncDisposable
     }
 
     /// <summary>Arranca la Api sobre una base de datos que ya tiene datos, como un reinicio del servicio.</summary>
-    public static WebhookHost StartOnDatabase(string connectionString, SapMockHost? sap = null, bool workerEnabled = true) =>
-        new(ApiFactory.Create(connectionString, sap: sap, workerEnabled: workerEnabled), connectionString);
+    public static WebhookHost StartOnDatabase(
+        string connectionString,
+        SapMockHost? sap = null,
+        bool workerEnabled = true,
+        Action<IWebHostBuilder>? configure = null) =>
+        new(ApiFactory.Create(connectionString, sap: sap, workerEnabled: workerEnabled, configure: configure), connectionString);
 
     /// <summary>Arranca la Api contra una base de datos que no existe, para simular una caída de PostgreSQL.</summary>
     public static WebhookHost StartWithUnreachableDatabase() =>

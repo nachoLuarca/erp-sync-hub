@@ -1,4 +1,5 @@
 using ErpSyncHub.Api.Health;
+using ErpSyncHub.Api.Inventory;
 using ErpSyncHub.Api.Problems;
 using ErpSyncHub.Api.Sync;
 using ErpSyncHub.Api.Webhooks;
@@ -54,6 +55,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 builder.Services.AddWooCommerceWebhooks(builder.Configuration);
 builder.Services.AddOrderSync(builder.Configuration);
+builder.Services.AddInventorySync(builder.Configuration);
 
 var app = builder.Build();
 
@@ -97,6 +99,7 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     },
 });
 app.MapWooCommerceWebhooks();
+app.MapInventorySync();
 
 app.Run();
 

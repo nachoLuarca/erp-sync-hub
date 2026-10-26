@@ -73,4 +73,12 @@ else
   echo "AVISO: ERPSYNC_WC_WEBHOOK_SECRET no está definida; no se crearon los webhooks hacia el hub."
 fi
 
+# --- Clave de la API REST para el hub (sincronización de stock y precios) ---
+# La clave y el secreto vienen de ERPSYNC_WC_CONSUMER_KEY y ERPSYNC_WC_CONSUMER_SECRET; el registro es idempotente.
+if [ -n "${WC_CONSUMER_KEY:-}" ] && [ -n "${WC_CONSUMER_SECRET:-}" ]; then
+  wp eval-file /registrar-claves-api.php
+else
+  echo "AVISO: ERPSYNC_WC_CONSUMER_KEY o ERPSYNC_WC_CONSUMER_SECRET no están definidas; no se registró la clave de API del hub."
+fi
+
 echo "Tienda lista en ${WP_URL}"

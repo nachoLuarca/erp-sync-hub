@@ -40,12 +40,14 @@ internal static class ItemSeed
         ("A00024", "Adhesivo de contacto 250 ml", 3290, 0),
     ];
 
-    public static IReadOnlyList<Item> Create() =>
+    public static IReadOnlyList<Item> Create(DateTimeOffset now) =>
         [.. Catalog.Select(entry => new Item(
             entry.Code,
             entry.Name,
             Valid: YesNo.Yes,
             Frozen: YesNo.No,
+            UpdateDate: DateOnly.FromDateTime(now.DateTime),
+            UpdateTime: TimeOnly.FromDateTime(now.DateTime),
             ItemPrices: [new ItemPrice(BasePriceList, entry.Price, Currency)],
             ItemWarehouseInfoCollection: [new ItemWarehouseInfo(DefaultWarehouse, entry.Stock, 0, 0)]))];
 }

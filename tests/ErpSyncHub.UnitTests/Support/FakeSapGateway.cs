@@ -75,6 +75,52 @@ internal sealed class FakeSapGateway : ISapGateway
     public Task<Result<SapItem?>> GetItemAsync(string itemCode, CancellationToken cancellationToken) =>
         Run<SapItem?>(nameof(GetItemAsync), () => Items.GetValueOrDefault(itemCode));
 
+    /// <summary>Artículos del maestro que lee la sincronización de stock y precios, en cualquier orden.</summary>
+    public List<SapInventoryItem> Inventory { get; } = [];
+
+    /// <summary>Se ejecuta después de cada lectura del maestro, con el número de lecturas hechas hasta ahora.</summary>
+    public Action<int>? AfterInventoryRead { get; set; }
+
+    /// <summary>Parámetros de cada lectura del maestro, en orden.</summary>
+    public List<(DateOnly? ChangedSince, string? AfterItemCode, int PageSize)> InventoryReads { get; } = [];
+
+    public void AddInventoryItem(
+        string itemCode,
+        decimal inStock = 0,
+        decimal committed = 0,
+        decimal? price = null,
+        bool active = true,
+        string warehouse = "01",
+        int priceList = 1,
+        DateOnly? updatedOn = null) =>
+        Inventory.Add(new SapInventoryItem(
+            itemCode,
+            active,
+            updatedOn,
+            UpdatedAt: null,
+            [new SapWarehouseStock(warehouse, inStock, committed)],
+            [new SapItemPrice(priceList, price)]));
+
+    public Task<Result<IReadOnlyList<SapInventoryItem>>> GetInventoryPageAsync(
+        DateOnly? changedSince,
+        string? afterItemCode,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        InventoryReads.Add((changedSince, afterItemCode, pageSize));
+
+        var page = Run<IReadOnlyList<SapInventoryItem>>(
+            nameof(GetInventoryPageAsync),
+            () => [.. Inventory
+                .Where(item => changedSince is null || (item.UpdatedOn is { } on && on >= changedSince))
+                .Where(item => afterItemCode is null || string.CompareOrdinal(item.ItemCode, afterItemCode) > 0)
+                .OrderBy(item => item.ItemCode, StringComparer.Ordinal)
+                .Take(pageSize)]);
+        AfterInventoryRead?.Invoke(InventoryReads.Count);
+        return page;
+    }
+
     public Task<Result<SapOrderReference?>> FindOrderByReferenceAsync(string reference, CancellationToken cancellationToken) =>
         Run<SapOrderReference?>(
             nameof(FindOrderByReferenceAsync),

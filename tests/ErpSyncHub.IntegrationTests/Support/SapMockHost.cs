@@ -28,6 +28,13 @@ internal sealed class SapMockHost : IDisposable
         (await admin.PostAsync("/_mock/reset", content: null)).EnsureSuccessStatusCode();
     }
 
+    /// <summary>Cambia stock, precio o estado de un artículo del mock (<c>PATCH /_mock/items/{itemCode}</c>).</summary>
+    public async Task AdjustItemAsync(string itemCode, object changes)
+    {
+        using var admin = _factory.CreateClient();
+        (await admin.PatchAsJsonAsync($"/_mock/items/{itemCode}", changes)).EnsureSuccessStatusCode();
+    }
+
     /// <summary>
     /// Consulta directa al Service Layer del mock, con su propia sesión: sirve para comprobar qué quedó en SAP
     /// sin pasar por el cliente del hub.

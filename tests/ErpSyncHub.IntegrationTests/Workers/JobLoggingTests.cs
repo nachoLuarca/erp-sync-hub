@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using ErpSyncHub.IntegrationTests.Support;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -80,14 +79,5 @@ public class JobLoggingTests(PostgresFixture postgres)
 
         sink.Events.Where(logEvent => logEvent.RenderMessage().Contains("/health", StringComparison.Ordinal))
             .ShouldAllBe(logEvent => logEvent.Level == LogEventLevel.Verbose);
-    }
-
-    private sealed class CollectingSink : ILogEventSink
-    {
-        private readonly ConcurrentQueue<LogEvent> _events = new();
-
-        public IReadOnlyList<LogEvent> Events => [.. _events];
-
-        public void Emit(LogEvent logEvent) => _events.Enqueue(logEvent);
     }
 }

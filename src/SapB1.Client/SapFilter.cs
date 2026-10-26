@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace SapB1.Client;
 
 /// <summary>Constructores de expresiones <c>$filter</c> que escapan los valores recibidos.</summary>
@@ -15,6 +17,20 @@ public static class SapFilter
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(property);
         return $"{property} eq {Quote(value)}";
+    }
+
+    /// <summary><c>Propiedad gt 'valor'</c>.</summary>
+    public static string Greater(string property, string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(property);
+        return $"{property} gt {Quote(value)}";
+    }
+
+    /// <summary><c>Propiedad ge 'yyyy-MM-dd'</c>: el formato de fecha que acepta el Service Layer.</summary>
+    public static string GreaterOrEqual(string property, DateOnly value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(property);
+        return $"{property} ge '{value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}'";
     }
 
     /// <summary>Une condiciones con <c>and</c>, cada una entre paréntesis.</summary>
