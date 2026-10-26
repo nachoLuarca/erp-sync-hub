@@ -125,6 +125,49 @@ public class ApiStartupTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public void Un_arranque_con_configuracion_invalida_falla_siempre_con_OptionsValidationException_aunque_el_equipo_este_saturado()
+    {
+        // Regresión: la validación corría dentro del arranque del host. Al fallar, Run() desechaba el contenedor de servicios mientras
+        // WebApplicationFactory aún lo usaba, y con poca CPU el error visible era un ObjectDisposedException en vez del de validación.
+        // Los hilos ocupados reproducen la falta de CPU de un runner de CI.
+        using var stop = new CancellationTokenSource();
+        var burners = Enumerable.Range(0, Environment.ProcessorCount * 2)
+            .Select(_ => new Thread(() =>
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    // Ocupa un núcleo.
+                }
+            })
+            { IsBackground = true })
+            .ToList();
+        burners.ForEach(burner => burner.Start());
+
+        try
+        {
+            for (var attempt = 0; attempt < 40; attempt++)
+            {
+                using var factory = ApiFactory.Create(
+                    "Host=localhost",
+                    configure: builder =>
+                    {
+                        builder.UseSetting("SAP:RequestTimeout", "00:02:00");
+                        builder.UseSetting("Worker:LeaseDuration", "00:01:00");
+                    });
+
+                var exception = Should.Throw<OptionsValidationException>(() => factory.CreateClient(), $"intento {attempt}");
+
+                exception.Message.ShouldContain("mayor que el tiempo de espera");
+            }
+        }
+        finally
+        {
+            stop.Cancel();
+            burners.ForEach(burner => burner.Join());
+        }
+    }
+
+    [Fact]
     public void Un_lease_mayor_que_el_tiempo_de_espera_de_SAP_se_acepta()
     {
         using var factory = ApiFactory.Create(
