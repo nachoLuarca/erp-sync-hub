@@ -18,9 +18,9 @@ public interface IStoreGateway
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Actualiza stock y precio de varios productos. La respuesta trae un resultado por producto: que uno falle no
-    /// impide que los demás se actualicen. Un error general (<see cref="Result"/> fallido) significa que ninguna
-    /// actualización se confirmó.
+    /// Actualiza stock y precio de varios productos. La respuesta trae un resultado por producto: que uno falle (o que falle
+    /// un lote entero) no impide que los demás se actualicen. Un error general (<see cref="Result"/> fallido) se reserva
+    /// para lo que afecta a toda la operación, como unas credenciales rechazadas.
     /// </summary>
     Task<Result<IReadOnlyList<StoreUpdateOutcome>>> UpdateProductsAsync(
         IReadOnlyCollection<StoreProductUpdate> updates,

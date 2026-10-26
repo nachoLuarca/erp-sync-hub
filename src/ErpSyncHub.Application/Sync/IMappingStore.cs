@@ -10,6 +10,14 @@ public interface IMappingStore
     /// <summary>El <c>ItemCode</c> asociado al SKU, o <see langword="null"/> si no hay mapeo.</summary>
     Task<string?> FindItemCodeAsync(string sku, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Los SKU asociados a cada <c>ItemCode</c>: un artículo de SAP puede venderse con varios SKU. Solo contiene los
+    /// artículos que tienen al menos un mapeo.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> FindSkusAsync(
+        IReadOnlyCollection<string> itemCodes,
+        CancellationToken cancellationToken);
+
     /// <summary>El <c>CardCode</c> asociado al cliente (ver <c>CustomerKey</c>), o <see langword="null"/> si no hay mapeo.</summary>
     Task<string?> FindCardCodeAsync(string customerKey, CancellationToken cancellationToken);
 

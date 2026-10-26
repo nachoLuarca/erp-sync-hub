@@ -21,6 +21,28 @@ internal sealed class MappingStore(ErpSyncHubDbContext context, TimeProvider tim
             .FirstOrDefaultAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> FindSkusAsync(
+        IReadOnlyCollection<string> itemCodes,
+        CancellationToken cancellationToken)
+    {
+        if (itemCodes.Count == 0)
+        {
+            return new Dictionary<string, IReadOnlyList<string>>();
+        }
+
+        var codes = itemCodes.Select(code => code.Trim()).Distinct(StringComparer.Ordinal).ToArray();
+        var rows = await context.ProductMappings
+            .AsNoTracking()
+            .Where(mapping => codes.Contains(mapping.ItemCode))
+            .OrderBy(mapping => mapping.Sku)
+            .Select(mapping => new { mapping.ItemCode, mapping.Sku })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .GroupBy(row => row.ItemCode, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)[.. group.Select(row => row.Sku)], StringComparer.Ordinal);
+    }
+
     public async Task<string?> FindCardCodeAsync(string customerKey, CancellationToken cancellationToken)
     {
         var key = customerKey.Trim();

@@ -78,6 +78,9 @@ internal sealed class FakeSapGateway : ISapGateway
     /// <summary>Artículos del maestro que lee la sincronización de stock y precios, en cualquier orden.</summary>
     public List<SapInventoryItem> Inventory { get; } = [];
 
+    /// <summary>Se ejecuta después de cada lectura del maestro, con el número de lecturas hechas hasta ahora.</summary>
+    public Action<int>? AfterInventoryRead { get; set; }
+
     /// <summary>Parámetros de cada lectura del maestro, en orden.</summary>
     public List<(DateOnly? ChangedSince, string? AfterItemCode, int PageSize)> InventoryReads { get; } = [];
 
@@ -104,15 +107,18 @@ internal sealed class FakeSapGateway : ISapGateway
         int pageSize,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         InventoryReads.Add((changedSince, afterItemCode, pageSize));
 
-        return Run<IReadOnlyList<SapInventoryItem>>(
+        var page = Run<IReadOnlyList<SapInventoryItem>>(
             nameof(GetInventoryPageAsync),
             () => [.. Inventory
                 .Where(item => changedSince is null || (item.UpdatedOn is { } on && on >= changedSince))
                 .Where(item => afterItemCode is null || string.CompareOrdinal(item.ItemCode, afterItemCode) > 0)
                 .OrderBy(item => item.ItemCode, StringComparer.Ordinal)
                 .Take(pageSize)]);
+        AfterInventoryRead?.Invoke(InventoryReads.Count);
+        return page;
     }
 
     public Task<Result<SapOrderReference?>> FindOrderByReferenceAsync(string reference, CancellationToken cancellationToken) =>

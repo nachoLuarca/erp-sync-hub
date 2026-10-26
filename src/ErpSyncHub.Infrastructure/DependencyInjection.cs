@@ -1,7 +1,9 @@
+using ErpSyncHub.Application.Inventory;
 using ErpSyncHub.Application.Jobs;
 using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Application.Sync;
 using ErpSyncHub.Infrastructure.Health;
+using ErpSyncHub.Infrastructure.Inventory;
 using ErpSyncHub.Infrastructure.Jobs;
 using ErpSyncHub.Infrastructure.Mappings;
 using ErpSyncHub.Infrastructure.Persistence;
@@ -34,6 +36,7 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IJobQueue, PostgresJobQueue>();
         services.AddScoped<IMappingStore, MappingStore>();
+        services.AddScoped<IItemSnapshotStore, ItemSnapshotStore>();
 
         // PostgreSQL caído es un fallo (el hub no puede guardar pedidos); SAP caído solo degrada (el inbox sigue recibiendo).
         services.AddSingleton<SapHealthCheck>();
