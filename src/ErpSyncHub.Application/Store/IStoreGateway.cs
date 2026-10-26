@@ -10,6 +10,12 @@ namespace ErpSyncHub.Application.Store;
 public interface IStoreGateway
 {
     /// <summary>
+    /// Falso si la tienda no está configurada (no se definió su dirección ni sus credenciales): no hay con qué
+    /// sincronizar y las demás operaciones fallarán.
+    /// </summary>
+    bool IsConfigured { get; }
+
+    /// <summary>
     /// Busca los productos por SKU. El resultado solo contiene los SKU que existen en la tienda; la comparación no distingue
     /// mayúsculas, pero las claves son los SKU pedidos.
     /// </summary>

@@ -1,6 +1,7 @@
 using ErpSyncHub.Application.Inventory;
 using ErpSyncHub.Application.Jobs;
 using ErpSyncHub.Application.Sap;
+using ErpSyncHub.Application.Store;
 using ErpSyncHub.Application.Sync;
 using ErpSyncHub.Infrastructure.Health;
 using ErpSyncHub.Infrastructure.Inventory;
@@ -8,6 +9,7 @@ using ErpSyncHub.Infrastructure.Jobs;
 using ErpSyncHub.Infrastructure.Mappings;
 using ErpSyncHub.Infrastructure.Persistence;
 using ErpSyncHub.Infrastructure.Sap;
+using ErpSyncHub.Infrastructure.Store;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -51,7 +53,40 @@ public static class DependencyInjection
         // Debe registrarse antes que cualquier servicio en segundo plano que use la base de datos.
         services.AddHostedService<DatabaseMigrationHostedService>();
 
-        return services.AddSapGateway(configuration);
+        return services.AddSapGateway(configuration).AddStoreGateway(configuration);
+    }
+
+    /// <summary>
+    /// Registra el acceso a la tienda: el adaptador de la API REST de WooCommerce, configurado con la sección
+    /// <c>Store:WooCommerce</c> (variables <c>Store__WooCommerce__BaseUrl</c>, <c>ConsumerKey</c> y <c>ConsumerSecret</c>).
+    /// Si no se define ninguna, la tienda queda como no configurada (<see cref="IStoreGateway.IsConfigured"/>).
+    /// </summary>
+    public static IServiceCollection AddStoreGateway(this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        services.AddOptions<WooCommerceOptions>().Bind(configuration.GetSection(WooCommerceOptions.SectionName)).ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<WooCommerceOptions>, WooCommerceOptionsValidator>());
+
+        services.AddHttpClient<IStoreGateway, WooCommerceGateway>((serviceProvider, http) =>
+        {
+            var options = serviceProvider.GetRequiredService<IOptions<WooCommerceOptions>>().Value;
+            http.Timeout = options.RequestTimeout;
+            http.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("ErpSyncHub");
+
+            if (options.IsConfigured)
+            {
+                http.BaseAddress = options.BaseUri;
+
+                // WooCommerce acepta Basic con la clave y el secreto de consumidor, pero solo por HTTPS.
+                http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                    "Basic",
+                    Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{options.ConsumerKey}:{options.ConsumerSecret}")));
+            }
+        });
+
+        return services;
     }
 
     /// <summary>

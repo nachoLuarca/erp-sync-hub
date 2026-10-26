@@ -10,6 +10,8 @@ internal sealed class FakeStoreGateway : IStoreGateway
 {
     private long _nextId = 100;
 
+    public bool IsConfigured { get; set; } = true;
+
     public Dictionary<string, long> Products { get; } = new(StringComparer.Ordinal);
 
     /// <summary>Cada llamada a <see cref="UpdateProductsAsync"/>, con lo que recibió.</summary>
