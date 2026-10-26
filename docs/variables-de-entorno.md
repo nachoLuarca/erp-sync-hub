@@ -35,6 +35,11 @@ Cómo definirlas en cada sistema está en el [README](../README.md#variables-de-
 | `ERPSYNC_INVENTORY_WAREHOUSES` | No | `01` | Almacenes de SAP cuyo stock se publica, separados por comas (`01,02`). |
 | `ERPSYNC_INVENTORY_PRICE_LIST` | No | `1` | Lista de precios de SAP de la que sale el precio. |
 | `ERPSYNC_INVENTORY_PRICE_DECIMALS` | No | `0` | Decimales con que se envía el precio (cero para pesos chilenos). |
+| `ERPSYNC_INVENTORY_FULL_INTERVAL` | No | `1.00:00:00` | Cada cuánto la sincronización periódica es completa, como respaldo (`d.hh:mm:ss`). `00:00:00` la desactiva. |
+| `ERPSYNC_JOB_MAX_ATTEMPTS` | No | `12` | Intentos de un job antes de pasar al dead letter. |
+| `ERPSYNC_JOB_RETRY_BASE_DELAY` | No | `00:00:30` | Espera tras el primer fallo; se duplica con cada intento. |
+| `ERPSYNC_JOB_RETRY_MAX_DELAY` | No | `01:00:00` | Tope de la espera entre intentos. |
+| `ERPSYNC_ADMIN_API_KEY` | Para usar el panel | — | Clave de acceso a `/admin/*` (cabecera `X-Api-Key`): de 32 a 256 caracteres sin espacios. Admite **varias claves separadas por coma** para rotarlas sin cortar el acceso. Sin ninguna, el panel responde 503. Ver [clave del panel](#clave-del-panel). |
 
 Si un puerto del host está ocupado por otro proyecto, cambia la variable `*_HOST_PORT` que corresponda. Entre contenedores no importan: se hablan por nombre de servicio y puerto interno.
 
@@ -61,6 +66,11 @@ Las mismas variables sirven para un despliegue fuera de Compose. Para el detalle
 | `Store__WooCommerce__RequestTimeout` | No | `00:00:30` | Tiempo máximo de cada petición a la tienda. |
 | `Sync__Inventory__Enabled` | No | `true` | Apaga la sincronización periódica de stock y precios. La manual del panel no depende de este valor. |
 | `Sync__Inventory__Interval` | No | `00:15:00` | Cada cuánto corre; entre 1 segundo y 24 horas. |
+| `Sync__Inventory__FullInterval` | No | `1.00:00:00` | Cada cuánto la sincronización periódica es completa (lee todo el maestro y envía todo, ignorando la última foto), como respaldo por si `UpdateDate` de SAP no refleja algún movimiento de stock. Se mide desde la última completa exitosa, también la manual. `00:00:00` la desactiva; si no, debe ser al menos `Sync__Inventory__Interval` y no pasar de 30 días. |
+| `Worker__Retry__MaxAttempts` | No | `12` | Intentos de un job, contando el primero, antes de pasar al dead letter (1 a 100). Un reintento manual concede un presupuesto nuevo. |
+| `Worker__Retry__BaseDelay` | No | `00:00:30` | Espera tras el primer fallo transitorio; se duplica con cada intento (de 10 ms a 1 día). |
+| `Worker__Retry__MaxDelay` | No | `01:00:00` | Tope de la espera entre intentos: al menos `BaseDelay` y como máximo 1 día. A cada espera se le aplica *jitter*: dura entre el 50 % y el 100 % de lo calculado. |
+| `Admin__ApiKey` | Para usar el panel | — | Una o más claves de acceso a `/admin/*`, separadas por coma, de 32 a 256 caracteres sin espacios cada una. Se compara cada clave presentada con todas las configuradas en tiempo constante. Sin ninguna, el hub funciona (webhook, worker, `/health`) pero el panel responde 503 y el log lo avisa al arrancar. |
 | `Sync__Inventory__Warehouses` | No | `01` | Códigos de los almacenes de SAP que se publican, separados por comas. El stock enviado es la suma de *en mano menos comprometido* de esos almacenes, con tope en 0. |
 | `Sync__Inventory__PriceList` | No | `1` | Número de la lista de precios de SAP. Un precio nulo o menor o igual a 0 no se envía. |
 | `Sync__Inventory__PriceDecimals` | No | `0` | Decimales del precio enviado (0 a 4). |
@@ -68,6 +78,40 @@ Las mismas variables sirven para un despliegue fuera de Compose. Para el detalle
 | `Sync__Inventory__TimeZoneId` | No | `America/Santiago` | Zona horaria de SAP (IANA), para convertir el instante de una ejecución en la fecha local de SAP con que se filtra `UpdateDate`. |
 
 La sincronización de stock y precios está explicada en [docs/flujo-de-stock-y-precios.md](flujo-de-stock-y-precios.md).
+
+## Clave del panel
+
+Todo lo que cuelga de `/admin` (jobs, reintentos, métricas, sincronización de inventario) exige la cabecera `X-Api-Key` con una de las claves de `ERPSYNC_ADMIN_API_KEY` (en el hub, `Admin__ApiKey`). El webhook de WooCommerce no la usa: se protege con su firma. `/health` y la documentación en desarrollo tampoco la piden.
+
+- **Sin clave configurada** el panel no queda abierto: responde 503 con un mensaje que dice qué variable definir.
+- **La clave nunca se registra**: ni la que presenta un cliente ni las configuradas aparecen en los logs; un acceso rechazado queda como advertencia con el método, la ruta y la IP.
+- **La comparación es en tiempo constante** (SHA-256 de cada clave y `FixedTimeEquals`, recorriendo todas), así que no filtra por el tiempo de respuesta ni el largo ni en qué posición difieren.
+
+Para generar una clave aleatoria de 64 caracteres hexadecimales y guardarla a nivel de usuario en Windows (PowerShell):
+
+```powershell
+function New-Hex([int]$bytes) {
+    $buffer = [byte[]]::new($bytes)
+    [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($buffer)
+    -join ($buffer | ForEach-Object { $_.ToString('x2') })
+}
+
+[Environment]::SetEnvironmentVariable('ERPSYNC_ADMIN_API_KEY', (New-Hex 32), 'User')
+```
+
+En Linux y macOS: `export ERPSYNC_ADMIN_API_KEY="$(openssl rand -hex 32)"`. Abre una terminal nueva después de definirla y vuelve a levantar el hub (`docker compose up -d hub`) para que la lea. Para usarla: `Invoke-RestMethod http://localhost:5200/admin/metrics -Headers @{ 'X-Api-Key' = $env:ERPSYNC_ADMIN_API_KEY }`.
+
+### Rotar la clave sin cortar el acceso
+
+El hub lee la clave al arrancar, así que cambiarla exige reiniciarlo; admitir varias a la vez permite hacerlo sin que ningún cliente (scripts, paneles, el monitoreo) quede sin acceso en ningún momento:
+
+1. **Genera la clave nueva** (`B`) como arriba, sin tocar la vigente (`A`).
+2. **Acepta las dos**: define `ERPSYNC_ADMIN_API_KEY=A,B` (la clave vigente primero, separadas por coma y sin espacios) y reinicia el hub. Desde aquí `A` y `B` abren el panel.
+3. **Pasa los clientes a `B`**: actualiza cada script, panel o monitor que use la clave. Comprueba que responden bien con `B`.
+4. **Confirma que nadie usa `A`**: en los logs (Seq) no deberían aparecer advertencias «Acceso rechazado al panel» de clientes legítimos, que son los que fallarían al retirar `A`.
+5. **Retira la vieja**: define `ERPSYNC_ADMIN_API_KEY=B` y reinicia el hub. `A` deja de valer.
+
+Si una clave se filtra, sáltate los pasos 3 y 4: define solo la clave nueva (`ERPSYNC_ADMIN_API_KEY=B`) y reinicia de inmediato, y luego actualiza los clientes.
 
 ## Credenciales de la API de WooCommerce
 
