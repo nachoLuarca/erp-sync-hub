@@ -15,6 +15,7 @@ internal static class ProblemDetailsSetup
         [StatusCodes.Status413PayloadTooLarge] = ("Cuerpo demasiado grande", "urn:erp-sync-hub:problem:payload-too-large"),
         [StatusCodes.Status415UnsupportedMediaType] = ("Tipo de contenido no admitido", "urn:erp-sync-hub:problem:unsupported-media-type"),
         [StatusCodes.Status500InternalServerError] = ("Error interno", "urn:erp-sync-hub:problem:internal-error"),
+        [StatusCodes.Status503ServiceUnavailable] = ("Servicio no disponible", "urn:erp-sync-hub:problem:service-unavailable"),
     };
 
     public static IServiceCollection AddApiProblemDetails(this IServiceCollection services) =>

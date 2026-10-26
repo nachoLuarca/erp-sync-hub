@@ -1,3 +1,4 @@
+using ErpSyncHub.Api.Admin;
 using ErpSyncHub.Api.Health;
 using ErpSyncHub.Api.Inventory;
 using ErpSyncHub.Api.Problems;
@@ -57,6 +58,7 @@ builder.Services.AddApplication();
 builder.Services.AddWooCommerceWebhooks(builder.Configuration);
 builder.Services.AddOrderSync(builder.Configuration);
 builder.Services.AddInventorySync(builder.Configuration);
+builder.Services.AddAdminAuthentication(builder.Configuration);
 
 var app = builder.Build();
 
@@ -65,6 +67,7 @@ var app = builder.Build();
 // todavía lo usa, y el error visible dependería de quién llegue primero. Fallar aquí es determinista: es siempre un
 // OptionsValidationException, y ningún servicio en segundo plano ha llegado a iniciarse.
 app.Services.GetRequiredService<IStartupValidator>().Validate();
+app.ReportAdminAuthentication();
 
 app.UseExceptionHandler();
 app.UseSerilogRequestLogging(options =>
@@ -87,6 +90,7 @@ app.UseSerilogRequestLogging(options =>
     };
 });
 app.UseStatusCodePages();
+app.UseAdminAuthentication();
 
 if (app.Environment.IsDevelopment())
 {

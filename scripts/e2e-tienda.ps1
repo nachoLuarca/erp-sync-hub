@@ -8,7 +8,7 @@
         docker compose --profile tienda up -d --build
 
     (variables ERPSYNC_POSTGRES_PASSWORD, ERPSYNC_WC_WEBHOOK_SECRET, ERPSYNC_WP_DB_PASSWORD, ERPSYNC_WP_ADMIN_PASSWORD,
-    ERPSYNC_WC_CONSUMER_KEY y ERPSYNC_WC_CONSUMER_SECRET; ver docs/variables-de-entorno.md).
+    ERPSYNC_WC_CONSUMER_KEY, ERPSYNC_WC_CONSUMER_SECRET y ERPSYNC_ADMIN_API_KEY; ver docs/variables-de-entorno.md).
 
     El script cambia stock y precios en el SAP simulado, dispara la sincronización por el panel y comprueba qué quedó en la
     tienda. Restaura los datos del SAP simulado al terminar. No toca nada más.
@@ -55,6 +55,13 @@ if (-not $key -or -not $secret) {
     throw 'Define ERPSYNC_WC_CONSUMER_KEY y ERPSYNC_WC_CONSUMER_SECRET (ver docs/variables-de-entorno.md).'
 }
 
+# El panel del hub exige una API key; si hay varias separadas por coma, basta la primera.
+$adminKey = ("$env:ERPSYNC_ADMIN_API_KEY" -split ',')[0].Trim()
+if (-not $adminKey) {
+    throw 'Define ERPSYNC_ADMIN_API_KEY (ver docs/variables-de-entorno.md).'
+}
+
+$hubHeaders = @{ 'X-Api-Key' = $adminKey }
 $auth = @{ Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("${key}:${secret}")) }
 $failures = [System.Collections.Generic.List[string]]::new()
 
@@ -88,7 +95,7 @@ function Set-MockItem([string]$itemCode, [hashtable]$changes) {
 
 function Invoke-Sync([switch]$Full) {
     $query = if ($Full) { '?full=true' } else { '' }
-    Invoke-RestMethod -Method Post -Uri "$HubUrl/admin/sync/inventory$query"
+    Invoke-RestMethod -Method Post -Uri "$HubUrl/admin/sync/inventory$query" -Headers $hubHeaders
 }
 
 Write-Host "Esperando al hub ($HubUrl) y a la tienda ($StoreUrl)..."
@@ -155,7 +162,7 @@ Assert-Equal $drill.stock_quantity 30 'A00001 stock'
 Assert-Equal $drill.regular_price 41990 'A00001 conserva el precio anterior'
 
 Write-Host '7. El panel consulta la última ejecución'
-$last = Invoke-RestMethod -Uri "$HubUrl/admin/sync/inventory/last"
+$last = Invoke-RestMethod -Uri "$HubUrl/admin/sync/inventory/last" -Headers $hubHeaders
 Assert-Equal $last.id $run.id 'la última es la que acaba de correr'
 Assert-Equal $last.trigger 'manual' 'disparador'
 

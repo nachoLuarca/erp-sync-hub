@@ -20,9 +20,14 @@ internal sealed class WebhookHost : IAsyncDisposable
         _factory = factory;
         ConnectionString = connectionString;
         Client = factory.CreateClient();
+        Client.DefaultRequestHeaders.Add("X-Api-Key", ApiFactory.AdminApiKey);
     }
 
+    /// <summary>Cliente con la clave del panel puesta en cada petición.</summary>
     public HttpClient Client { get; }
+
+    /// <summary>Un cliente nuevo sin ninguna cabecera, para comprobar lo que ve quien no tiene clave.</summary>
+    public HttpClient CreateAnonymousClient() => _factory.CreateClient();
 
     /// <summary>Los servicios de la Api en ejecución, para tomar una pieza (por ejemplo, el lock de la sincronización).</summary>
     public IServiceProvider Services => _factory.Services;
