@@ -25,6 +25,31 @@ public class ItemsApiTests
     }
 
     [Fact]
+    public async Task GetAsync_devuelve_la_fecha_y_la_hora_de_modificacion()
+    {
+        await using var harness = ClientHarness.AgainstMock();
+
+        var item = await harness.Client.Items.GetAsync("A00001");
+
+        item.ShouldNotBeNull();
+        item.UpdateDate.ShouldNotBeNull();
+        item.UpdateTime.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task QueryAsync_filtra_por_fecha_de_modificacion()
+    {
+        await using var harness = ClientHarness.AgainstMock();
+        var today = DateOnly.FromDateTime(DateTime.Now);
+
+        var recent = await ToListAsync(harness.Client.Items.QueryAsync(new SapQuery { Filter = SapFilter.GreaterOrEqual("UpdateDate", today.AddDays(-1)) }));
+        var future = await ToListAsync(harness.Client.Items.QueryAsync(new SapQuery { Filter = SapFilter.GreaterOrEqual("UpdateDate", today.AddDays(1)) }));
+
+        recent.Count.ShouldBe(24);
+        future.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GetAsync_de_un_articulo_inexistente_devuelve_null()
     {
         await using var harness = ClientHarness.AgainstMock();

@@ -1,11 +1,16 @@
 namespace SapB1.Mock.Items;
 
-/// <summary>Artículo del maestro de SAP (subconjunto del objeto <c>Items</c> del Service Layer).</summary>
+/// <summary>
+/// Artículo del maestro de SAP (subconjunto del objeto <c>Items</c> del Service Layer). <c>UpdateDate</c> y
+/// <c>UpdateTime</c> son la fecha y la hora locales de SAP de la última modificación, sin zona horaria.
+/// </summary>
 internal sealed record Item(
     string ItemCode,
     string ItemName,
     string Valid,
     string Frozen,
+    DateOnly UpdateDate,
+    TimeOnly UpdateTime,
     IReadOnlyList<ItemPrice> ItemPrices,
     IReadOnlyList<ItemWarehouseInfo> ItemWarehouseInfoCollection)
 {
