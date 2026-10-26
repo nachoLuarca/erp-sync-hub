@@ -94,6 +94,29 @@ public class SapGatewayErrorMappingTests
     }
 
     [Fact]
+    public async Task Una_conexion_cortada_a_mitad_de_la_respuesta_es_una_falla_de_red_pasajera()
+    {
+        _items.GetAsync("A1", Arg.Any<CancellationToken>()).ThrowsAsync(new IOException("Unexpected end of stream"));
+
+        var result = await Gateway().GetItemAsync("A1", CancellationToken.None);
+
+        result.Error!.Kind.ShouldBe(ErrorKind.Transient);
+        result.Error.Code.ShouldBe(SapErrors.Unreachable);
+        result.Error.Message.ShouldContain("Unexpected end of stream");
+    }
+
+    [Fact]
+    public async Task Un_IOException_sin_mensaje_se_describe_por_su_tipo()
+    {
+        _items.GetAsync("A1", Arg.Any<CancellationToken>()).ThrowsAsync(new IOException(string.Empty));
+
+        var result = await Gateway().GetItemAsync("A1", CancellationToken.None);
+
+        result.Error!.Code.ShouldBe(SapErrors.Unreachable);
+        result.Error.Message.ShouldContain(nameof(IOException));
+    }
+
+    [Fact]
     public async Task Una_falla_de_red_es_pasajera()
     {
         _items.GetAsync("A1", Arg.Any<CancellationToken>()).ThrowsAsync(new HttpRequestException("Connection refused"));

@@ -309,6 +309,18 @@ public sealed class WooCommerceGatewayTests : IDisposable
     }
 
     [Fact]
+    public async Task Una_conexion_cortada_a_mitad_de_la_respuesta_es_una_falla_pasajera()
+    {
+        _store.FailNextWith(new IOException("Unexpected end of stream"));
+        await using var provider = Provider();
+
+        var result = await Gateway(provider).FindProductsBySkuAsync(["A"], CancellationToken.None);
+
+        result.Error!.Code.ShouldBe(StoreErrors.Unreachable);
+        result.Error.IsTransient.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task El_tiempo_agotado_es_una_falla_pasajera()
     {
         _store.FailNextWith(new TaskCanceledException("timeout"));

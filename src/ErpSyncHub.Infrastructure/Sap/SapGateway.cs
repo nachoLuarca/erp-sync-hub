@@ -227,11 +227,12 @@ internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> o
                 SapErrors.Session,
                 $"No se pudo iniciar o mantener la sesión en SAP{Describe(exception.StatusCode, exception.SapErrorCode, exception.SapErrorMessage)}"));
         }
-        catch (HttpRequestException exception)
+        catch (Exception exception) when (exception is HttpRequestException or IOException)
         {
+            // Un IOException suelto es una conexión cortada a mitad de la respuesta: igual de pasajero que no poder conectar.
             return Result.Failure<T>(ResultError.Transient(
                 SapErrors.Unreachable,
-                $"No se pudo conectar con SAP: {exception.Message}"));
+                $"No se pudo conectar con SAP: {Describe(exception)}"));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -239,6 +240,9 @@ internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> o
             return Result.Failure<T>(ResultError.Transient(SapErrors.Timeout, "SAP no respondió dentro del tiempo de espera."));
         }
     }
+
+    private static string Describe(Exception exception) =>
+        string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : exception.Message;
 
     private static ResultError Translate(SapB1ApiException exception)
     {

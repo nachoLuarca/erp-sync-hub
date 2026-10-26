@@ -216,9 +216,11 @@ internal sealed class WooCommerceGateway(HttpClient http, IOptions<WooCommerceOp
                 return Result.Failure<JsonNode?>(ResultError.Transient(StoreErrors.InvalidResponse, "La tienda respondió algo que no es JSON."));
             }
         }
-        catch (HttpRequestException exception)
+        catch (Exception exception) when (exception is HttpRequestException or IOException)
         {
-            return Result.Failure<JsonNode?>(ResultError.Transient(StoreErrors.Unreachable, $"No se pudo conectar con la tienda: {exception.Message}"));
+            // Un IOException suelto es una conexión cortada a mitad de la respuesta: igual de pasajero que no poder conectar.
+            var detail = string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : exception.Message;
+            return Result.Failure<JsonNode?>(ResultError.Transient(StoreErrors.Unreachable, $"No se pudo conectar con la tienda: {detail}"));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
