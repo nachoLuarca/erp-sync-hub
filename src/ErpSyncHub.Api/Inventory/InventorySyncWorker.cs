@@ -20,6 +20,10 @@ internal sealed partial class InventorySyncWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // BackgroundService ejecuta este método de forma síncrona hasta su primer await, dentro del arranque del host: se cede el hilo
+        // para que ningún servicio se resuelva ni se lance trabajo antes de que el host termine de iniciar.
+        await Task.Yield();
+
         if (!_options.Enabled)
         {
             LogDisabled();

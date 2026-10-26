@@ -19,6 +19,10 @@ internal sealed partial class SyncWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // BackgroundService ejecuta este método de forma síncrona hasta su primer await, dentro del arranque del host: se cede el hilo
+        // para que ningún trabajo (consultas a la base de datos) ocurra antes de que el host termine de iniciar.
+        await Task.Yield();
+
         if (!_options.Enabled)
         {
             LogDisabled();

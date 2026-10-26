@@ -7,6 +7,7 @@ using ErpSyncHub.Application;
 using ErpSyncHub.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using Scalar.AspNetCore;
 using Serilog;
 using Serilog.Events;
@@ -58,6 +59,12 @@ builder.Services.AddOrderSync(builder.Configuration);
 builder.Services.AddInventorySync(builder.Configuration);
 
 var app = builder.Build();
+
+// Toda la configuración se valida aquí, antes de iniciar el host. ValidateOnStart también lo haría, pero dentro del arranque: si fallara
+// ahí, Run() desecharía el contenedor de servicios mientras el resto del proceso (por ejemplo, WebApplicationFactory en las pruebas)
+// todavía lo usa, y el error visible dependería de quién llegue primero. Fallar aquí es determinista: es siempre un
+// OptionsValidationException, y ningún servicio en segundo plano ha llegado a iniciarse.
+app.Services.GetRequiredService<IStartupValidator>().Validate();
 
 app.UseExceptionHandler();
 app.UseSerilogRequestLogging(options =>
