@@ -1,5 +1,7 @@
 using ErpSyncHub.IntegrationTests.Support;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 
 namespace ErpSyncHub.IntegrationTests.Persistence;
@@ -75,6 +77,68 @@ public class MigrationTests(PostgresFixture postgres)
         columns.ShouldContain("locked_until:timestamp with time zone");
         columns.ShouldContain("store_total:numeric");
         columns.ShouldContain("sap_doc_entry:integer");
+    }
+
+    [Fact]
+    public async Task La_migracion_de_reintentos_conserva_los_intentos_de_los_jobs_existentes()
+    {
+        var connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using var context = PostgresFixture.CreateContext(connectionString);
+        var migrator = context.GetService<IMigrator>();
+        await migrator.MigrateAsync("20261026154452_AddInventorySync");
+        await ExecuteAsync(
+            connectionString,
+            "INSERT INTO sync_jobs (id, source, external_id, type, payload, status, attempt_count, created_at, updated_at) " +
+            "VALUES (gen_random_uuid(), 'woocommerce', '1', 'order', '{}', 'failed', 3, now(), now())");
+
+        await migrator.MigrateAsync();
+
+        (await QueryAsync<int>(connectionString, "SELECT cycle_attempts FROM sync_jobs")).ShouldHaveSingleItem().ShouldBe(3);
+        (await QueryAsync<string>(connectionString, "SELECT status FROM sync_jobs")).ShouldHaveSingleItem().ShouldBe("failed");
+    }
+
+    [Theory]
+    [InlineData("retrying", true)]
+    [InlineData("dead_letter", true)]
+    [InlineData("failed", true)]
+    [InlineData("inventado", false)]
+    public async Task La_restriccion_de_estado_acepta_los_estados_de_reintento_y_rechaza_los_desconocidos(string status, bool accepted)
+    {
+        var connectionString = await postgres.CreateMigratedDatabaseAsync();
+        var insert =
+            "INSERT INTO sync_jobs (id, source, external_id, type, payload, status, attempt_count, created_at, updated_at) " +
+            $"VALUES (gen_random_uuid(), 'woocommerce', '1', 'order', '{{}}', '{status}', 0, now(), now())";
+
+        if (accepted)
+        {
+            await Should.NotThrowAsync(() => ExecuteAsync(connectionString, insert));
+        }
+        else
+        {
+            var failure = await Should.ThrowAsync<PostgresException>(() => ExecuteAsync(connectionString, insert));
+            failure.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation);
+        }
+    }
+
+    [Fact]
+    public async Task El_indice_de_reintentos_es_parcial_sobre_los_jobs_en_espera()
+    {
+        var connectionString = await postgres.CreateMigratedDatabaseAsync();
+
+        var definition = (await QueryAsync<string>(
+            connectionString,
+            "SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_sync_jobs_retrying'")).ShouldHaveSingleItem();
+
+        definition.ShouldContain("next_attempt_at");
+        definition.ShouldContain("retrying");
+    }
+
+    private static async Task ExecuteAsync(string connectionString, string sql)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync();
     }
 
     private static async Task<List<T>> QueryAsync<T>(string connectionString, string sql)

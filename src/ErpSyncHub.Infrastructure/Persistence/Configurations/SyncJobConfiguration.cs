@@ -25,6 +25,7 @@ internal sealed class SyncJobConfiguration : IEntityTypeConfiguration<SyncJob>
             .HasMaxLength(20)
             .IsRequired();
 
+        builder.Property(job => job.CycleAttempts).HasDefaultValue(0);
         builder.Property(job => job.StoreTotal).HasPrecision(18, 4);
         builder.Property(job => job.SapTotal).HasPrecision(18, 4);
         builder.Property(job => job.SapCardCode).HasMaxLength(Domain.Customers.SapCardCodes.MaxLength);
@@ -54,5 +55,9 @@ internal sealed class SyncJobConfiguration : IEntityTypeConfiguration<SyncJob>
         builder.HasIndex(job => job.LockedUntil)
             .HasFilter("status = 'processing'")
             .HasDatabaseName("ix_sync_jobs_processing");
+
+        builder.HasIndex(job => job.NextAttemptAt)
+            .HasFilter("status = 'retrying'")
+            .HasDatabaseName("ix_sync_jobs_retrying");
     }
 }

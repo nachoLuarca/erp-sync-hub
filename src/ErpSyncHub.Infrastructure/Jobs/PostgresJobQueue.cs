@@ -66,6 +66,7 @@ internal sealed class PostgresJobQueue(ErpSyncHubDbContext context, TimeProvider
         var now = time.GetUtcNow();
         var pending = SnakeCaseEnumConverter<JobStatus>.ToDatabase(JobStatus.Pending);
         var processing = SnakeCaseEnumConverter<JobStatus>.ToDatabase(JobStatus.Processing);
+        var retrying = SnakeCaseEnumConverter<JobStatus>.ToDatabase(JobStatus.Retrying);
 
         // Transacción corta: solo reparte el trabajo. El procesamiento (llamadas a SAP) ocurre fuera de ella.
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
@@ -75,7 +76,9 @@ internal sealed class PostgresJobQueue(ErpSyncHubDbContext context, TimeProvider
             .FromSql(
                 $"""
                 SELECT *, xmin FROM sync_jobs
-                WHERE status = {pending} OR (status = {processing} AND locked_until <= {now})
+                WHERE status = {pending}
+                   OR (status = {retrying} AND next_attempt_at <= {now})
+                   OR (status = {processing} AND locked_until <= {now})
                 ORDER BY created_at, id
                 LIMIT {maxJobs}
                 FOR UPDATE SKIP LOCKED

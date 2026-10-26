@@ -234,6 +234,12 @@ namespace ErpSyncHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int>("CycleAttempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("cycle_attempts");
+
                     b.Property<string>("ExternalId")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -262,6 +268,10 @@ namespace ErpSyncHub.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LockedUntil")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("locked_until");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt_at");
 
                     b.Property<string>("Payload")
                         .IsRequired()
@@ -330,13 +340,17 @@ namespace ErpSyncHub.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_sync_jobs_processing")
                         .HasFilter("status = 'processing'");
 
+                    b.HasIndex("NextAttemptAt")
+                        .HasDatabaseName("ix_sync_jobs_retrying")
+                        .HasFilter("status = 'retrying'");
+
                     b.HasIndex("Source", "ExternalId", "Type")
                         .IsUnique()
                         .HasDatabaseName("ux_sync_jobs_source_external_id_type");
 
                     b.ToTable("sync_jobs", null, t =>
                         {
-                            t.HasCheckConstraint("ck_sync_jobs_status", "status IN ('pending', 'processing', 'succeeded', 'failed')");
+                            t.HasCheckConstraint("ck_sync_jobs_status", "status IN ('pending', 'processing', 'succeeded', 'retrying', 'failed', 'dead_letter')");
                         });
                 });
 
