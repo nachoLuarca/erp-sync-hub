@@ -65,7 +65,7 @@ Un artículo con varios SKU toma el resultado más grave.
 
 ## Panel
 
-Sin autenticación hasta la Fase 4: no expongas el hub fuera de una red de confianza.
+Todos los endpoints exigen la cabecera `X-Api-Key` ([cómo se configura](variables-de-entorno.md#clave-del-panel)); el resto del panel está en [panel.md](panel.md).
 
 | Endpoint | Para qué sirve |
 |---|---|
@@ -90,6 +90,15 @@ Ejemplo de respuesta:
   "error": null
 }
 ```
+
+## Completa de respaldo
+
+La lectura incremental depende de que `UpdateDate` de SAP cambie con los movimientos de stock, un supuesto que hay que validar con un SAP real. Como respaldo, cada `Sync__Inventory__FullInterval` (24 horas por defecto) la ejecución periódica es **completa**: lee todo el maestro y envía todo, ignorando la foto. Cubre también la edición manual de stock o precio en la tienda.
+
+- El intervalo se mide desde la **última completa exitosa guardada en la base** (también cuenta la manual, `?full=true`), así que sobrevive a reinicios y una completa manual posterga la siguiente programada.
+- Una completa que falló o terminó con errores no cuenta: se reintenta en el intervalo siguiente.
+- La decisión se toma con el lock tomado, de modo que dos instancias del hub no hacen dos completas seguidas.
+- `Sync__Inventory__FullInterval=00:00:00` la desactiva. En el panel y en las métricas se reconoce porque `full` es `true` y `trigger` es `scheduled`.
 
 ## Logs y correlación
 
