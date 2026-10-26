@@ -1,3 +1,4 @@
+using SapB1.Mock.Items;
 using SapB1.Mock.Sessions;
 
 namespace SapB1.Mock.Admin;
@@ -27,5 +28,7 @@ internal static class AdminEndpoints
             sessions.Clear();
             return Results.NoContent();
         });
+
+        admin.MapItemAdmin();
     }
 }

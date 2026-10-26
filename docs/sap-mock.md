@@ -51,6 +51,7 @@ Fuera del contrato de SAP y sin sesión; sirven para pruebas automáticas y para
 |---|---|
 | `POST /_mock/reset` | Restaura artículos, socios y órdenes a los datos semilla, y reinicia la numeración. |
 | `POST /_mock/sessions/expire` | Invalida todas las sesiones abiertas, como si hubieran expirado. |
+| `PATCH /_mock/items/{itemCode}` | Cambia stock físico (`InStock`), comprometido (`Committed`), precio (`Price`) o congela el artículo (`Frozen`); `WarehouseCode` y `PriceList` eligen el almacén y la lista (por defecto `01` y `1`). Actualiza `UpdateDate`/`UpdateTime`. Responde 204, 404 si no existe o 400 con valores negativos. |
 
 ## Datos semilla
 
