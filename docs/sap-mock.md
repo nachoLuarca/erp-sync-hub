@@ -53,6 +53,30 @@ Fuera del contrato de SAP y sin sesión; sirven para pruebas automáticas y para
 | `POST /_mock/sessions/expire` | Invalida todas las sesiones abiertas, como si hubieran expirado. |
 | `PATCH /_mock/items/{itemCode}` | Cambia stock físico (`InStock`), comprometido (`Committed`), precio (`Price`) o congela el artículo (`Frozen`); `WarehouseCode` y `PriceList` eligen el almacén y la lista (por defecto `01` y `1`). Actualiza `UpdateDate`/`UpdateTime`. Responde 204, 404 si no existe o 400 con valores negativos. |
 
+### Simulación de fallas
+
+`PUT /_mock/faults` activa fallas que se inyectan en las peticiones del Service Layer (`/b1s/v1`, incluido el login); `/health` y `/_mock` nunca se ven afectados. Reemplaza la configuración anterior y reinicia los contadores. `GET /_mock/faults` devuelve la configuración y cuántas veces se inyectó cada falla; `DELETE /_mock/faults` y `POST /_mock/reset` las quitan. Una configuración inválida responde 400 y no cambia nada.
+
+| Campo | Efecto |
+|---|---|
+| `Outage` | Caída total: ninguna petición se atiende. |
+| `OutageMode` | `Unavailable` (por defecto) responde 503 con un error de SAP; `ConnectionReset` corta la conexión sin responder, como un proceso caído. |
+| `LatencyMs` | Demora cada petición esa cantidad de milisegundos (hasta 120 000). |
+| `ErrorEveryNth` | Cada N-ésima petición responde con `ErrorStatusCode`. Es determinista: sirve para pruebas. |
+| `ErrorRate` | Probabilidad (0 a 1) de que cada petición responda con `ErrorStatusCode`. |
+| `ErrorStatusCode` | Código 5xx de los errores intermitentes (503 por defecto). |
+| `SessionExpiryEveryNth` | Cada N-ésima petición autenticada encuentra su sesión expirada (401, código 301) y la pierde, así que hay que iniciar sesión de nuevo. |
+
+La latencia se aplica primero; la caída total prevalece sobre los errores intermitentes. `POST /_mock/sessions/expire` sigue sirviendo para expirar todas las sesiones de una vez.
+
+```powershell
+# Cada tercera petición responde 502 y cada cuarta autenticada pierde la sesión
+Invoke-RestMethod -Method Put -Uri http://localhost:5201/_mock/faults -ContentType application/json -Body '{"ErrorEveryNth":3,"ErrorStatusCode":502,"SessionExpiryEveryNth":4}'
+# Caída total y recuperación
+Invoke-RestMethod -Method Put -Uri http://localhost:5201/_mock/faults -ContentType application/json -Body '{"Outage":true}'
+Invoke-RestMethod -Method Delete -Uri http://localhost:5201/_mock/faults
+```
+
 ## Datos semilla
 
 - **24 artículos** `A00001` a `A00024` de una ferretería, con precio en CLP en la lista 1 y existencias en el almacén `01`. `A00024` no tiene stock.

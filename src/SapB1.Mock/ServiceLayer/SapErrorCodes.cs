@@ -24,6 +24,12 @@ internal static class SapErrorCodes
     /// <summary>El registro ya existe, "ODBC -2035" (HTTP 400). Aproximado.</summary>
     public const int AlreadyExists = -2035;
 
+    /// <summary>Servicio no disponible (HTTP 503), solo en las caídas simuladas. Aproximado.</summary>
+    public const int Unavailable = -1001;
+
+    /// <summary>Error interno del servidor (HTTP 5xx), solo en las fallas simuladas. Aproximado.</summary>
+    public const int InternalError = -1002;
+
     /// <summary>Credenciales o sociedad inválidas en el login (HTTP 401). Aproximado.</summary>
     public const int InvalidCredentials = -304;
 }

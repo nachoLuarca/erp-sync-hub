@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -45,6 +46,13 @@ internal sealed class ClientHarness : IAsyncDisposable
     {
         using var admin = _mock!.CreateClient();
         (await admin.PostAsync("/_mock/sessions/expire", content: null)).EnsureSuccessStatusCode();
+    }
+
+    /// <summary>Activa fallas simuladas en el mock (<c>PUT /_mock/faults</c>).</summary>
+    public async Task SetFaultsAsync(object faults)
+    {
+        using var admin = _mock!.CreateClient();
+        (await admin.PutAsJsonAsync("/_mock/faults", faults)).EnsureSuccessStatusCode();
     }
 
     /// <summary>Restaura los datos semilla del mock.</summary>
