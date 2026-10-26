@@ -24,6 +24,9 @@ internal sealed class WebhookHost : IAsyncDisposable
 
     public HttpClient Client { get; }
 
+    /// <summary>Los servicios de la Api en ejecución, para tomar una pieza (por ejemplo, el lock de la sincronización).</summary>
+    public IServiceProvider Services => _factory.Services;
+
     public string ConnectionString { get; }
 
     /// <param name="postgres">PostgreSQL compartido de las pruebas.</param>

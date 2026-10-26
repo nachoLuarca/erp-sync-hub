@@ -10,6 +10,7 @@ internal static class ProblemDetailsSetup
         [StatusCodes.Status400BadRequest] = ("Solicitud inválida", "urn:erp-sync-hub:problem:bad-request"),
         [StatusCodes.Status401Unauthorized] = ("No autorizado", "urn:erp-sync-hub:problem:unauthorized"),
         [StatusCodes.Status404NotFound] = ("Recurso no encontrado", "urn:erp-sync-hub:problem:not-found"),
+        [StatusCodes.Status409Conflict] = ("Conflicto", "urn:erp-sync-hub:problem:conflict"),
         [StatusCodes.Status405MethodNotAllowed] = ("Método no permitido", "urn:erp-sync-hub:problem:method-not-allowed"),
         [StatusCodes.Status413PayloadTooLarge] = ("Cuerpo demasiado grande", "urn:erp-sync-hub:problem:payload-too-large"),
         [StatusCodes.Status415UnsupportedMediaType] = ("Tipo de contenido no admitido", "urn:erp-sync-hub:problem:unsupported-media-type"),
@@ -37,6 +38,10 @@ internal static class ProblemDetailsSetup
             problem.Extensions["traceId"] = context.HttpContext.Features.Get<IHttpActivityFeature>()?.Activity.TraceId.ToString()
                 ?? context.HttpContext.TraceIdentifier;
         });
+
+    public static string TitleFor(int statusCode) => Known[statusCode].Title;
+
+    public static string TypeFor(int statusCode) => Known[statusCode].Type;
 
     /// <summary>Un ProblemDetails con el título y tipo estándar del estado, y un detalle específico.</summary>
     public static IResult Problem(int statusCode, string detail) =>

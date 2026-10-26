@@ -99,6 +99,7 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     },
 });
 app.MapWooCommerceWebhooks();
+app.MapInventorySync();
 
 app.Run();
 
