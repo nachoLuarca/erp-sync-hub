@@ -16,6 +16,9 @@ internal sealed class FakeWooCommerceHandler : HttpMessageHandler
 
     private readonly Queue<Func<HttpResponseMessage>> _scripted = new();
 
+    /// <summary>Demora de cada respuesta, para que una sincronización dure lo suficiente como para coincidir con otra.</summary>
+    public TimeSpan Delay { get; set; }
+
     public Dictionary<long, Product> Products { get; } = [];
 
     /// <summary>Cada petición: método, ruta con consulta y cuerpo.</summary>
@@ -43,6 +46,11 @@ internal sealed class FakeWooCommerceHandler : HttpMessageHandler
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (Delay > TimeSpan.Zero)
+        {
+            await Task.Delay(Delay, cancellationToken);
+        }
+
         var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
         Requests.Add((request.Method, request.RequestUri!.PathAndQuery, body));
         Authorizations.Add(new AuthenticationHeader(request.Headers.Authorization?.Scheme, request.Headers.Authorization?.Parameter));
