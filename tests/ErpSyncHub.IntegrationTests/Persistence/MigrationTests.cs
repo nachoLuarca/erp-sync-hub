@@ -8,7 +8,7 @@ namespace ErpSyncHub.IntegrationTests.Persistence;
 public class MigrationTests(PostgresFixture postgres)
 {
     [Fact]
-    public async Task La_migracion_inicial_se_aplica_sobre_una_base_vacia_y_crea_las_cuatro_tablas()
+    public async Task La_migracion_inicial_se_aplica_sobre_una_base_vacia_y_crea_todas_las_tablas()
     {
         var connectionString = await postgres.CreateEmptyDatabaseAsync();
         await using var context = PostgresFixture.CreateContext(connectionString);
@@ -18,7 +18,8 @@ public class MigrationTests(PostgresFixture postgres)
         var tables = await QueryAsync<string>(
             connectionString,
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name <> '__EFMigrationsHistory' ORDER BY table_name");
-        tables.ShouldBe(["customer_mappings", "product_mappings", "sync_attempts", "sync_jobs"]);
+        tables.ShouldBe(
+            ["customer_mappings", "inventory_sync_runs", "item_snapshots", "product_mappings", "sync_attempts", "sync_jobs"]);
     }
 
     [Fact]

@@ -22,6 +22,140 @@ namespace ErpSyncHub.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("ErpSyncHub.Domain.Inventory.InventorySyncRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateOnly?>("ChangedSince")
+                        .HasColumnType("date")
+                        .HasColumnName("changed_since");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("error_code");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error_message");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<bool>("Full")
+                        .HasColumnType("boolean")
+                        .HasColumnName("full");
+
+                    b.Property<string>("Instance")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("instance");
+
+                    b.Property<int>("ItemsFailed")
+                        .HasColumnType("integer")
+                        .HasColumnName("items_failed");
+
+                    b.Property<int>("ItemsRead")
+                        .HasColumnType("integer")
+                        .HasColumnName("items_read");
+
+                    b.Property<int>("ItemsSkipped")
+                        .HasColumnType("integer")
+                        .HasColumnName("items_skipped");
+
+                    b.Property<int>("ItemsUnchanged")
+                        .HasColumnType("integer")
+                        .HasColumnName("items_unchanged");
+
+                    b.Property<int>("ItemsUpdated")
+                        .HasColumnType("integer")
+                        .HasColumnName("items_updated");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Trigger")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("trigger");
+
+                    b.HasKey("Id")
+                        .HasName("pk_inventory_sync_runs");
+
+                    b.HasIndex("StartedAt")
+                        .IsDescending()
+                        .HasDatabaseName("ix_inventory_sync_runs_started_at");
+
+                    b.ToTable("inventory_sync_runs", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_inventory_sync_runs_counts", "items_read >= 0 AND items_updated >= 0 AND items_unchanged >= 0 AND items_skipped >= 0 AND items_failed >= 0");
+
+                            t.HasCheckConstraint("ck_inventory_sync_runs_status", "status IN ('running', 'succeeded', 'completed_with_errors', 'failed', 'abandoned')");
+
+                            t.HasCheckConstraint("ck_inventory_sync_runs_trigger", "trigger IN ('scheduled', 'manual')");
+                        });
+                });
+
+            modelBuilder.Entity("ErpSyncHub.Domain.Inventory.ItemSnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ItemCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("item_code");
+
+                    b.Property<decimal?>("Price")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("price");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("sku");
+
+                    b.Property<int>("StockQuantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("stock_quantity");
+
+                    b.Property<DateTimeOffset>("SyncedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("synced_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_item_snapshots");
+
+                    b.HasIndex("ItemCode")
+                        .HasDatabaseName("ix_item_snapshots_item_code");
+
+                    b.HasIndex("Sku")
+                        .IsUnique()
+                        .HasDatabaseName("ux_item_snapshots_sku");
+
+                    b.ToTable("item_snapshots", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_item_snapshots_stock_quantity", "stock_quantity >= 0");
+                        });
+                });
+
             modelBuilder.Entity("ErpSyncHub.Domain.Jobs.SyncAttempt", b =>
                 {
                     b.Property<Guid>("Id")
