@@ -126,6 +126,27 @@ public class SyncJobRunnerRetryTests
     }
 
     [Fact]
+    public async Task Una_falla_que_no_es_cancelacion_mientras_el_servicio_se_apaga_devuelve_el_job_a_la_cola_sin_contarla_como_inesperada()
+    {
+        using var stopping = new CancellationTokenSource();
+        var sap = Substitute.For<ISapGateway>();
+        sap.FindOrderByReferenceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns<Task<Result<SapOrderReference?>>>(async _ =>
+        {
+            await stopping.CancelAsync();
+            throw new ObjectDisposedException("IServiceProvider");
+        });
+        _queue.ReleaseAsync(Arg.Any<ClaimedJob>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(Result.Success()));
+        var claim = Claim();
+
+        await Runner(sap).RunAsync(claim, JobTimeout, stopping.Token);
+
+        await _queue.Received(1).ReleaseAsync(claim, Arg.Any<CancellationToken>());
+        await _queue.DidNotReceiveWithAnyArgs().FailAsync(default!, default!, default, default);
+        _logger.Collector.GetSnapshot().ShouldNotContain(record => record.Level == LogLevel.Error);
+        Messages(LogLevel.Warning).ShouldContain(message => message.Contains("se apagaba", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Un_job_que_ya_agoto_sus_intentos_sin_cerrarse_va_al_dead_letter_sin_procesarlo()
     {
         var claim = Claim(cycleAttempt: 5);

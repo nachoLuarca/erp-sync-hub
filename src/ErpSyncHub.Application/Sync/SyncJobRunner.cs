@@ -99,6 +99,14 @@ public sealed partial class SyncJobRunner(
         {
             failure = ResultError.Transient(JobErrors.Timeout, $"El procesamiento superó el tiempo máximo de {jobTimeout.TotalSeconds:0} segundos.");
         }
+        catch (Exception exception) when (stoppingToken.IsCancellationRequested)
+        {
+            // Con el servicio apagándose, un fallo distinto de la cancelación (un servicio ya desechado, una conexión cortada) es
+            // consecuencia del apagado y no del job: no cuenta como error inesperado, el job vuelve a la cola.
+            LogFailureWhileStopping(exception);
+            await ReleaseAsync(claim);
+            return;
+        }
         catch (Exception exception)
         {
             LogUnexpected(exception);
@@ -186,6 +194,9 @@ public sealed partial class SyncJobRunner(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error inesperado al procesar el job")]
     private partial void LogUnexpected(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Falló el procesamiento del job mientras el servicio se apagaba; se devuelve a la cola")]
+    private partial void LogFailureWhileStopping(Exception exception);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "El servicio se apaga: el job vuelve a la cola para que otro worker lo tome")]
     private partial void LogReleased();
