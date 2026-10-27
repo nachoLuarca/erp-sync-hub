@@ -55,7 +55,7 @@ public class MigrationTests(PostgresFixture postgres)
 
         var indexes = await QueryAsync<string>(
             connectionString,
-            "SELECT indexdef FROM pg_indexes WHERE indexname IN ('ix_sync_jobs_pending', 'ix_sync_jobs_processing') ORDER BY indexname");
+            "SELECT indexdef FROM pg_indexes WHERE indexname IN ('ix_sync_jobs_claimable', 'ix_sync_jobs_processing') ORDER BY indexname");
 
         indexes.Count.ShouldBe(2);
         indexes[0].ShouldContain("WHERE");
@@ -121,16 +121,58 @@ public class MigrationTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task El_indice_de_reintentos_es_parcial_sobre_los_jobs_en_espera()
+    public async Task El_indice_de_la_cola_sigue_el_orden_con_que_se_reparte_el_trabajo()
     {
         var connectionString = await postgres.CreateMigratedDatabaseAsync();
 
         var definition = (await QueryAsync<string>(
             connectionString,
-            "SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_sync_jobs_retrying'")).ShouldHaveSingleItem();
+            "SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_sync_jobs_claimable'")).ShouldHaveSingleItem();
 
-        definition.ShouldContain("next_attempt_at");
+        definition.ShouldContain("COALESCE(next_attempt_at, created_at)");
         definition.ShouldContain("retrying");
+    }
+
+    [Fact]
+    public async Task La_consulta_de_la_cola_usa_el_indice_de_orden()
+    {
+        var connectionString = await postgres.CreateMigratedDatabaseAsync();
+        await ExecuteAsync(
+            connectionString,
+            """
+            INSERT INTO sync_jobs (id, source, external_id, type, payload, status, attempt_count, created_at, updated_at)
+            SELECT gen_random_uuid(), 'woocommerce', n::text, 'order', '{}', CASE WHEN n % 50 = 0 THEN 'pending' ELSE 'succeeded' END, 0, now(), now()
+            FROM generate_series(1, 5000) AS n;
+            ANALYZE sync_jobs;
+            """);
+
+        // Se desactivan los recorridos secuenciales: en una tabla pequeña el planificador podría preferirlos aunque el índice sirva.
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using (var disable = new NpgsqlCommand("SET enable_seqscan = off", connection))
+        {
+            await disable.ExecuteNonQueryAsync();
+        }
+
+        await using var explain = new NpgsqlCommand(
+            """
+            EXPLAIN SELECT id FROM sync_jobs
+            WHERE (status IN ('pending', 'retrying') AND COALESCE(next_attempt_at, created_at) <= now())
+            ORDER BY COALESCE(next_attempt_at, created_at), id
+            LIMIT 1
+            """,
+            connection);
+        var lines = new List<string>();
+        await using (var reader = await explain.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                lines.Add(reader.GetString(0));
+            }
+        }
+
+        var plan = string.Join('\n', lines);
+        plan.ShouldContain("ix_sync_jobs_claimable");
     }
 
     private static async Task ExecuteAsync(string connectionString, string sql)

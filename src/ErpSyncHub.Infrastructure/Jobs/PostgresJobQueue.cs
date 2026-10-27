@@ -71,15 +71,16 @@ internal sealed class PostgresJobQueue(ErpSyncHubDbContext context, TimeProvider
         // Transacción corta: solo reparte el trabajo. El procesamiento (llamadas a SAP) ocurre fuera de ella.
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
+        // Se reparte en el orden en que cada job quedó disponible (su reintento programado o, si no, su creación): un job
+        // que reintenta cada pocos segundos no deja sin atender a los nuevos. Lo respalda el índice ix_sync_jobs_claimable.
         // "xmin" no está incluido en "*" y es el token de concurrencia del job.
         var jobs = await context.SyncJobs
             .FromSql(
                 $"""
                 SELECT *, xmin FROM sync_jobs
-                WHERE status = {pending}
-                   OR (status = {retrying} AND next_attempt_at <= {now})
+                WHERE (status IN ({pending}, {retrying}) AND COALESCE(next_attempt_at, created_at) <= {now})
                    OR (status = {processing} AND locked_until <= {now})
-                ORDER BY created_at, id
+                ORDER BY COALESCE(next_attempt_at, created_at), id
                 LIMIT {maxJobs}
                 FOR UPDATE SKIP LOCKED
                 """)

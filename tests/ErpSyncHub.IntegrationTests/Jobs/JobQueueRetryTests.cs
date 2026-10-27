@@ -117,7 +117,7 @@ public class JobQueueRetryTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Los_jobs_vencidos_se_entregan_del_mas_antiguo_al_mas_nuevo_junto_con_los_pendientes()
+    public async Task Los_jobs_vencidos_se_entregan_en_el_orden_en_que_quedaron_disponibles_junto_con_los_pendientes()
     {
         var (_, queue) = await NewQueueAsync();
         using var _ = queue;
@@ -130,7 +130,8 @@ public class JobQueueRetryTests(PostgresFixture postgres)
         queue.Time.Advance(TimeSpan.FromMinutes(2));
         var claims = await queue.ClaimAsync("worker-2", maxJobs: 5);
 
-        claims.Select(claim => claim.ExternalId).ShouldBe(["old", "new"]);
+        // "new" estaba disponible desde su creación; "old" solo desde que venció su espera de un minuto.
+        claims.Select(claim => claim.ExternalId).ShouldBe(["new", "old"]);
     }
 
     [Fact]
@@ -167,6 +168,26 @@ public class JobQueueRetryTests(PostgresFixture postgres)
 
         late.Error!.Code.ShouldBe("job.lost_lease");
         (await Scalar<string>(connectionString, "SELECT status FROM sync_jobs")).ShouldBe("processing");
+    }
+
+    [Fact]
+    public async Task Un_job_nuevo_no_queda_atras_de_jobs_que_reintentan_una_y_otra_vez()
+    {
+        var (_, queue) = await NewQueueAsync();
+        using var _ = queue;
+        await queue.EnqueueAsync(queue.NewJob("5501"));
+        var retrying = (await queue.ClaimAsync("worker-1")).Single();
+        await queue.FailAsync(retrying, Transient, new RetryDecision(RetryAction.RetryLater, TimeSpan.FromSeconds(10)));
+        queue.Time.Advance(TimeSpan.FromSeconds(1));
+        await queue.EnqueueAsync(queue.NewJob("5502"));
+        queue.Time.Advance(TimeSpan.FromSeconds(10));
+
+        // El 5501 es más antiguo, pero lleva esperando su reintento menos tiempo que el 5502 su primer intento.
+        var next = (await queue.ClaimAsync("worker-2")).Single();
+        next.ExternalId.ShouldBe("5502");
+
+        // El 5501 sigue vigente: cada job se atiende en cuanto le toca, ninguno queda sin atender.
+        (await queue.ClaimAsync("worker-3")).Single().ExternalId.ShouldBe("5501");
     }
 
     [Fact]

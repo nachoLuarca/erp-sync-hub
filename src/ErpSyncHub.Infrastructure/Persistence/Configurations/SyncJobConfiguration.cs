@@ -48,16 +48,10 @@ internal sealed class SyncJobConfiguration : IEntityTypeConfiguration<SyncJob>
             .HasDatabaseName("ux_sync_jobs_source_external_id_type");
 
         // Índices parciales: la cola solo consulta lo pendiente y lo que tiene lease, no millones de jobs terminados.
-        builder.HasIndex(job => job.CreatedAt)
-            .HasFilter("status = 'pending'")
-            .HasDatabaseName("ix_sync_jobs_pending");
-
+        // Lo pendiente y lo que espera un reintento comparten un índice por expresión (EF Core no lo modela: lo crea la
+        // migración AddClaimOrderIndex, que lo declara con SQL) en el mismo orden con que ClaimAsync reparte el trabajo.
         builder.HasIndex(job => job.LockedUntil)
             .HasFilter("status = 'processing'")
             .HasDatabaseName("ix_sync_jobs_processing");
-
-        builder.HasIndex(job => job.NextAttemptAt)
-            .HasFilter("status = 'retrying'")
-            .HasDatabaseName("ix_sync_jobs_retrying");
     }
 }

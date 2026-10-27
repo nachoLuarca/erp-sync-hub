@@ -32,7 +32,7 @@ Un corte de conexión a mitad de la respuesta (`IOException`) se traduce a falla
 | `failed` | sí | Error definitivo. Requiere corregir el dato y reintentar a mano. |
 | `dead_letter` | sí | Error transitorio con los intentos agotados. Queda a la vista en el panel. |
 
-La cola toma un `retrying` solo cuando llega su hora; el índice parcial `ix_sync_jobs_retrying` lo hace barato. `failed` y `dead_letter` son terminales para el worker, pero el panel puede reabrirlos.
+La cola toma un `retrying` solo cuando llega su hora y reparte el trabajo en el orden en que cada job quedó disponible (`COALESCE(next_attempt_at, created_at)`): un job que reintenta seguido no deja sin atender a los nuevos. Lo respalda el índice parcial por expresión `ix_sync_jobs_claimable`. `failed` y `dead_letter` son terminales para el worker, pero el panel puede reabrirlos.
 
 ### Backoff exponencial con jitter
 
