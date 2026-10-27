@@ -112,3 +112,7 @@ Si el servicio se está apagando, cualquier falla del procesamiento de un job, n
 - Cambiar la clave del panel exige reiniciar el hub; la rotación con varias claves lo hace sin cortar el acceso.
 - El panel no tiene roles: quien tiene una clave puede leer y reintentar. Para más de un nivel de acceso haría falta un esquema de autenticación completo.
 - Las métricas cuentan filas de `sync_jobs` por estado: es barato con miles de jobs y deja de serlo con millones; llegado el caso se archivan los jobs terminados.
+
+### Estabilidad de las pruebas bajo carga
+
+Las pruebas de integración se repitieron en un contenedor con `--cpus=1` y cuatro hilos ocupados, más exigente que un runner de GitHub. `JobLoggingTests` (una falla aislada en una corrida completa) no se reprodujo en 50 repeticiones de su clase ni en tres corridas completas, así que no se modificó. Esas corridas sí revelaron que los jobs en reintento rápido dejaban sin atender a los nuevos (corregido con el orden por disponibilidad) y que `host.docker.internal` podía resolver a una dirección IPv6 inalcanzable (corregido en `scripts/test.ps1`).

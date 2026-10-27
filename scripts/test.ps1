@@ -45,6 +45,7 @@ $dockerArgs = @(
     '-v', "${repo}:/src:ro",
     '-v', 'erp-sync-hub-nuget:/root/.nuget/packages',
     # Testcontainers levanta sus contenedores en el Docker del host (hermanos de este) y los alcanza por el puerto publicado.
+    # test-container.sh sustituye el nombre por la dirección IPv4 del host: Docker Desktop también publica una IPv6 inalcanzable.
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
     '--add-host', 'host.docker.internal:host-gateway',
     '-e', 'TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal',
