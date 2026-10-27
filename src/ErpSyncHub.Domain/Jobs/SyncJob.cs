@@ -37,8 +37,17 @@ public sealed class SyncJob
 
     public JobStatus Status { get; private set; }
 
-    /// <summary>Cantidad de veces que un worker tomó el job.</summary>
+    /// <summary>Cantidad de veces que un worker tomó el job, en toda su vida.</summary>
     public int AttemptCount { get; private set; }
+
+    /// <summary>
+    /// Intentos del ciclo actual: cuenta contra el máximo de reintentos automáticos y vuelve a cero con un reintento manual.
+    /// Incluye los intentos abandonados (un worker que cayó), para que un job que tumba al worker no se reintente sin fin.
+    /// </summary>
+    public int CycleAttempts { get; private set; }
+
+    /// <summary>Cuándo puede tomarse otra vez un job en <see cref="JobStatus.Retrying"/>.</summary>
+    public DateTimeOffset? NextAttemptAt { get; private set; }
 
     /// <summary>Total del pedido según la tienda (con envío e impuestos).</summary>
     public decimal? StoreTotal { get; private set; }
@@ -111,9 +120,14 @@ public sealed class SyncJob
         return Result.Success(job);
     }
 
-    /// <summary>Un worker puede tomarlo si está pendiente, o si estaba tomado pero su lease venció.</summary>
+    /// <summary>
+    /// Un worker puede tomarlo si está pendiente, si espera un reintento cuya hora ya llegó, o si estaba tomado pero su
+    /// lease venció.
+    /// </summary>
     public bool IsClaimable(DateTimeOffset now) =>
-        Status == JobStatus.Pending || (Status == JobStatus.Processing && LockedUntil <= now);
+        Status == JobStatus.Pending
+        || (Status == JobStatus.Retrying && NextAttemptAt <= now)
+        || (Status == JobStatus.Processing && LockedUntil <= now);
 
     /// <summary>Lo toma un worker por el tiempo del lease y registra un nuevo intento.</summary>
     public Result<SyncAttempt> Claim(string workerId, DateTimeOffset now, TimeSpan lease)
@@ -137,6 +151,8 @@ public sealed class SyncJob
         }
 
         AttemptCount++;
+        CycleAttempts++;
+        NextAttemptAt = null;
         Status = JobStatus.Processing;
         LockedBy = workerId;
         LockedUntil = now + lease;
@@ -157,6 +173,8 @@ public sealed class SyncJob
         }
 
         Status = JobStatus.Succeeded;
+        LastErrorCode = null;
+        LastErrorMessage = null;
         SapDocEntry = order.DocEntry;
         SapDocNum = order.DocNum;
         SapCardCode = order.CardCode;
@@ -184,8 +202,25 @@ public sealed class SyncJob
         return Result.Success();
     }
 
-    /// <summary>Cierra el job como fallido, guardando el motivo.</summary>
-    public Result MarkFailed(string workerId, ResultError error, DateTimeOffset now)
+    /// <summary>
+    /// Cierra el job como fallido por un error definitivo, guardando el motivo. Reintentar no cambiaría nada: queda así hasta
+    /// que una persona lo corrija y lo reintente a mano.
+    /// </summary>
+    public Result MarkFailed(string workerId, ResultError error, DateTimeOffset now) =>
+        CloseWithError(workerId, error, JobStatus.Failed, now);
+
+    /// <summary>
+    /// Cierra el job en el dead letter: el error era transitorio pero se agotaron los intentos automáticos. Queda a la vista
+    /// en el panel hasta que una persona lo reintente.
+    /// </summary>
+    public Result MarkDeadLetter(string workerId, ResultError error, DateTimeOffset now) =>
+        CloseWithError(workerId, error, JobStatus.DeadLetter, now);
+
+    /// <summary>
+    /// Deja el job esperando para reintentarlo a la hora indicada tras un error transitorio. Conserva el motivo del último
+    /// fallo y libera el job: cualquier worker podrá tomarlo cuando llegue la hora.
+    /// </summary>
+    public Result ScheduleRetry(string workerId, ResultError error, DateTimeOffset nextAttemptAt, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(error);
 
@@ -195,10 +230,38 @@ public sealed class SyncJob
             return Result.Failure(ownership);
         }
 
-        Status = JobStatus.Failed;
-        LastErrorCode = Truncate(error.Code, MaxErrorCodeLength);
-        LastErrorMessage = Truncate(error.Message, MaxErrorMessageLength);
-        Finish(now);
+        Status = JobStatus.Retrying;
+        NextAttemptAt = nextAttemptAt;
+        SaveError(error);
+        LockedBy = null;
+        LockedUntil = null;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Reintento manual: deja el job disponible de inmediato con un presupuesto de intentos nuevo. Sirve para un job fallido o
+    /// en el dead letter, y para saltarse la espera de uno que aguarda su reintento. Conserva el último error y el historial
+    /// de intentos. No se puede reintentar un job en proceso ni uno que ya terminó con éxito.
+    /// </summary>
+    public Result RetryNow(DateTimeOffset now)
+    {
+        if (Status is JobStatus.Processing or JobStatus.Succeeded)
+        {
+            return Result.Failure(ResultError.Conflict(
+                "job.not_retryable",
+                Status == JobStatus.Processing
+                    ? $"El job {Id} está en proceso: espera a que termine el intento."
+                    : $"El job {Id} ya terminó con éxito: no hay nada que reintentar."));
+        }
+
+        Status = JobStatus.Pending;
+        NextAttemptAt = null;
+        CycleAttempts = 0;
+        FinishedAt = null;
+        LockedBy = null;
+        LockedUntil = null;
+        UpdatedAt = now;
         return Result.Success();
     }
 
@@ -228,6 +291,29 @@ public sealed class SyncJob
         return LockedBy == workerId
             ? null
             : ResultError.Conflict("job.lost_lease", $"El job {Id} lo tiene tomado otro worker.");
+    }
+
+    private Result CloseWithError(string workerId, ResultError error, JobStatus terminal, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        var ownership = EnsureOwnedBy(workerId);
+        if (ownership is not null)
+        {
+            return Result.Failure(ownership);
+        }
+
+        Status = terminal;
+        NextAttemptAt = null;
+        SaveError(error);
+        Finish(now);
+        return Result.Success();
+    }
+
+    private void SaveError(ResultError error)
+    {
+        LastErrorCode = Truncate(error.Code, MaxErrorCodeLength);
+        LastErrorMessage = Truncate(error.Message, MaxErrorMessageLength);
     }
 
     private void Finish(DateTimeOffset now)

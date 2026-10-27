@@ -76,6 +76,13 @@ services:
       Sync__Inventory__Warehouses: ${ERPSYNC_INVENTORY_WAREHOUSES:-01}
       Sync__Inventory__PriceList: ${ERPSYNC_INVENTORY_PRICE_LIST:-1}
       Sync__Inventory__PriceDecimals: ${ERPSYNC_INVENTORY_PRICE_DECIMALS:-0}
+      Sync__Inventory__FullInterval: ${ERPSYNC_INVENTORY_FULL_INTERVAL:-1.00:00:00}
+      # Reintentos de los jobs que fallan por errores transitorios (espera que se duplica, con jitter, hasta el tope).
+      Worker__Retry__MaxAttempts: ${ERPSYNC_JOB_MAX_ATTEMPTS:-12}
+      Worker__Retry__BaseDelay: ${ERPSYNC_JOB_RETRY_BASE_DELAY:-00:00:30}
+      Worker__Retry__MaxDelay: ${ERPSYNC_JOB_RETRY_MAX_DELAY:-01:00:00}
+      # Sin clave, el panel (/admin/*) queda deshabilitado (503); admite varias claves separadas por coma para rotarlas.
+      Admin__ApiKey: ${ERPSYNC_ADMIN_API_KEY:-}
     ports:
       - "127.0.0.1:${ERPSYNC_HUB_HOST_PORT:-5200}:8080"
   # --- Tienda WooCommerce (opcional): docker compose --profile tienda up -d ---

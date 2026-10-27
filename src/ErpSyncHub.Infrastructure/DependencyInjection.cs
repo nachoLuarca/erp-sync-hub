@@ -37,6 +37,7 @@ public static class DependencyInjection
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IJobQueue, PostgresJobQueue>();
+        services.AddScoped<IJobAdmin, JobAdmin>();
         services.AddScoped<IMappingStore, MappingStore>();
         services.AddScoped<IItemSnapshotStore, ItemSnapshotStore>();
         services.AddScoped<IInventorySyncRunStore, InventorySyncRunStore>();

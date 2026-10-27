@@ -66,17 +66,21 @@ internal sealed class PostgresJobQueue(ErpSyncHubDbContext context, TimeProvider
         var now = time.GetUtcNow();
         var pending = SnakeCaseEnumConverter<JobStatus>.ToDatabase(JobStatus.Pending);
         var processing = SnakeCaseEnumConverter<JobStatus>.ToDatabase(JobStatus.Processing);
+        var retrying = SnakeCaseEnumConverter<JobStatus>.ToDatabase(JobStatus.Retrying);
 
         // Transacción corta: solo reparte el trabajo. El procesamiento (llamadas a SAP) ocurre fuera de ella.
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
+        // Se reparte en el orden en que cada job quedó disponible (su reintento programado o, si no, su creación): un job
+        // que reintenta cada pocos segundos no deja sin atender a los nuevos. Lo respalda el índice ix_sync_jobs_claimable.
         // "xmin" no está incluido en "*" y es el token de concurrencia del job.
         var jobs = await context.SyncJobs
             .FromSql(
                 $"""
                 SELECT *, xmin FROM sync_jobs
-                WHERE status = {pending} OR (status = {processing} AND locked_until <= {now})
-                ORDER BY created_at, id
+                WHERE (status IN ({pending}, {retrying}) AND COALESCE(next_attempt_at, created_at) <= {now})
+                   OR (status = {processing} AND locked_until <= {now})
+                ORDER BY COALESCE(next_attempt_at, created_at), id
                 LIMIT {maxJobs}
                 FOR UPDATE SKIP LOCKED
                 """)
@@ -117,7 +121,8 @@ internal sealed class PostgresJobQueue(ErpSyncHubDbContext context, TimeProvider
                 job.ExternalId,
                 job.Type,
                 job.Payload,
-                job.StoreTotal));
+                job.StoreTotal,
+                job.CycleAttempts));
         }
 
         await context.SaveChangesAsync(cancellationToken);
@@ -138,14 +143,22 @@ internal sealed class PostgresJobQueue(ErpSyncHubDbContext context, TimeProvider
             cancellationToken);
     }
 
-    public Task<Result> FailAsync(ClaimedJob claim, ResultError failure, CancellationToken cancellationToken)
+    public Task<Result> FailAsync(ClaimedJob claim, ResultError failure, RetryDecision decision, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(failure);
+        ArgumentOutOfRangeException.ThrowIfLessThan(decision.Delay, TimeSpan.Zero);
+
         return CloseAsync(
             claim,
             (job, attempt, now) =>
             {
-                var closed = job.MarkFailed(claim.WorkerId, failure, now);
+                var closed = decision.Action switch
+                {
+                    RetryAction.RetryLater => job.ScheduleRetry(claim.WorkerId, failure, now + decision.Delay, now),
+                    RetryAction.DeadLetter => job.MarkDeadLetter(claim.WorkerId, failure, now),
+                    _ => job.MarkFailed(claim.WorkerId, failure, now),
+                };
+
                 return closed.IsFailure ? closed : attempt.Fail(failure, now);
             },
             cancellationToken);

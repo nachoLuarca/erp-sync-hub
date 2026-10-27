@@ -1,6 +1,6 @@
 ﻿# Flujo de pedidos: tienda → SAP
 
-Cómo viaja un pedido de WooCommerce hasta convertirse en una orden de venta de SAP Business One. Las decisiones de fondo están en el [ADR 0007](adr/0007-inbox-y-cola-con-lease.md) (recepción y cola) y el [ADR 0008](adr/0008-sincronizacion-de-pedidos.md) (cómo se convierte el pedido).
+Cómo viaja un pedido de WooCommerce hasta convertirse en una orden de venta de SAP Business One. Las decisiones de fondo están en el [ADR 0007](adr/0007-inbox-y-cola-con-lease.md) (recepción y cola), el [ADR 0008](adr/0008-sincronizacion-de-pedidos.md) (cómo se convierte el pedido) y el [ADR 0010](adr/0010-resiliencia-reintentos-dead-letter-y-panel.md) (reintentos, dead letter y panel).
 
 ## Secuencia
 
@@ -40,12 +40,23 @@ stateDiagram-v2
     [*] --> pending: webhook recibido
     pending --> processing: un worker lo toma (lease)
     processing --> succeeded: orden creada en SAP
-    processing --> failed: error definitivo o pasajero
+    processing --> retrying: error transitorio (SAP caído, timeout, 5xx)
+    retrying --> processing: llega su hora (backoff exponencial con jitter)
+    processing --> dead_letter: error transitorio y se agotaron los intentos
+    processing --> failed: error definitivo (SKU sin mapeo, RUT inválido…)
     processing --> pending: el servicio se apaga (liberado)
     processing --> processing: el lease venció y otro worker lo retoma
+    failed --> pending: reintento manual desde el panel
+    dead_letter --> pending: reintento manual desde el panel
+    retrying --> pending: reintento manual (salta la espera)
     succeeded --> [*]
-    failed --> [*]: Fase 4: backoff, dead letter y reintento manual
 ```
+
+- **`retrying`**: falló por un error transitorio y espera su próximo intento. La espera es `30 s × 2^(n-1)` con tope de 1 hora, y se le aplica *jitter* (entre el 50 % y el 100 % de lo calculado) para que los jobs que fallaron juntos no vuelvan a golpear a SAP a la vez.
+- **`dead_letter`**: terminal. Se agotaron los 12 intentos; con los valores por defecto eso cubre una caída o mantención de SAP de entre 2 h 32 min y 5 h 4 min de espera acumulada (promedio unas 3 h 48 min), más lo que dure cada intento. Queda a la vista en el [panel](panel.md).
+- **`failed`**: terminal. Un error definitivo no se reintenta solo: hay que corregir el dato y reintentarlo a mano.
+- Un reintento manual concede un presupuesto de intentos nuevo y conserva el historial.
+- Un job que acumula más intentos de los permitidos sin llegar a cerrarse (el worker que lo toma cae una y otra vez) se manda al dead letter sin procesarlo (`job.attempts_exhausted`).
 
 ## Endpoint
 
@@ -82,13 +93,17 @@ Todo se configura por variables de entorno (`:` se escribe `__`); ver también [
 | `Worker__PollInterval` | `00:00:02` | Cada cuánto consulta la cola un worker sin trabajo. |
 | `Worker__Concurrency` | `2` | Jobs que se procesan a la vez en el proceso. |
 | `Worker__LeaseDuration` | `00:05:00` | Tiempo que un worker conserva un job; debe ser mayor que `SAP__RequestTimeout`. |
+| `Worker__Retry__MaxAttempts` | `12` | Intentos de un job antes de pasar al dead letter. |
+| `Worker__Retry__BaseDelay` | `00:00:30` | Espera tras el primer fallo transitorio; se duplica con cada intento. |
+| `Worker__Retry__MaxDelay` | `01:00:00` | Tope de la espera entre intentos. |
+| `Admin__ApiKey` | — | Clave(s) de acceso al [panel](panel.md), separadas por coma. Sin ninguna, el panel responde 503. |
 | `Serilog__MinimumLevel__Default` | `Information` | Nivel de registro. |
 
 La configuración se valida al iniciar: si falta algo o es inválido, el servicio no arranca y el mensaje dice qué variable corregir.
 
 ## Códigos de error de un job
 
-Quedan en `sync_jobs.last_error_code` y en el intento (`sync_attempts`), con la clasificación que usará la Fase 4 para decidir los reintentos.
+Quedan en `sync_jobs.last_error_code` y en el intento (`sync_attempts`), con la clasificación con que el backoff decide si reintentar: lo **pasajero** y lo **inesperado** se reintentan; lo **definitivo** no. Los mensajes de error de SAP y de la tienda se guardan sin RUT ni correos (los reemplazan por `[RUT]` y `[correo]`), y los de este servicio nunca los incluyen: el valor está en el payload, que el panel solo entrega con `includePayload=true`.
 
 | Código | Clasificación | Significado |
 |---|---|---|
@@ -102,13 +117,14 @@ Quedan en `sync_jobs.last_error_code` y en el intento (`sync_attempts`), con la 
 | `sap.server_error` · `sap.session` · `sap.unreachable` · `sap.timeout` | pasajero | SAP no pudo atender: error del servidor, sesión, red o tiempo de espera. |
 | `sap.customer_conflict` | pasajero | SAP dijo que el cliente existe pero no se pudo leer. |
 | `job.timeout` | pasajero | El job superó su tiempo máximo (menor que el lease). |
-| `job.unexpected` | inesperado | Un defecto; el registro tiene el detalle. |
+| `job.unexpected` | inesperado (se reintenta) | Un defecto o un problema local; el log tiene el detalle con la excepción completa y nivel `Error`. Si se repite hasta agotar los intentos, queda en el dead letter. |
+| `job.attempts_exhausted` | pasajero (dead letter) | El job acumuló más intentos de los permitidos sin cerrarse: el worker que lo tomaba cayó o excedió el lease una y otra vez. |
 | `job.unsupported` | definitivo | Origen o tipo de job que este servicio no procesa. |
 
 ## Operación
 
-- **Ver el estado:** `GET /health` (PostgreSQL y SAP) y la tabla `sync_jobs`. El panel para consultar y reintentar jobs llega en la Fase 4.
+- **Ver el estado:** `GET /health` (PostgreSQL y SAP) y el [panel](panel.md): `GET /admin/jobs` con filtros, `GET /admin/jobs/{id}` con el historial de intentos, `POST /admin/jobs/{id}/retry` y `GET /admin/metrics`.
 - **Seguir un job en los logs:** cada línea del worker lleva `JobId`, `Attempt`, `Source` y `ExternalId` como propiedades.
 - **Advertencia de totales:** `El total de la tienda (…) difiere del de SAP (…)` indica el desglose; es esperable cuando el pedido tiene envío o IVA.
-- **SAP caído:** el hub sigue recibiendo pedidos (los jobs quedan `pending` o `failed` según el momento) y `/health` responde `Degraded`.
+- **SAP caído:** el hub sigue recibiendo pedidos y `/health` responde `Degraded`. Los jobs quedan `retrying` con espera creciente y se completan solos al volver SAP, sin duplicar la orden; si la caída dura más que los intentos, pasan a `dead_letter` y se reintentan desde el panel.
 - **PostgreSQL caído:** el webhook responde `500` y WooCommerce reintenta.

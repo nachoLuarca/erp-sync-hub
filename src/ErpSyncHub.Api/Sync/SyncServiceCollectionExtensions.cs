@@ -1,3 +1,4 @@
+using ErpSyncHub.Application.Jobs;
 using ErpSyncHub.Application.Sync;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -18,6 +19,12 @@ internal static class SyncServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<OrderSyncOptions>, OrderSyncOptionsValidator>());
         services.AddSingleton(serviceProvider => serviceProvider.GetRequiredService<IOptions<OrderSyncOptions>>().Value);
 
+        services.AddOptions<JobRetryOptions>()
+            .Bind(configuration.GetSection(JobRetryOptions.SectionName))
+            .ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<JobRetryOptions>, JobRetryOptionsValidator>());
+        services.AddSingleton(serviceProvider => serviceProvider.GetRequiredService<IOptions<JobRetryOptions>>().Value);
+
         services.AddOptions<SyncWorkerOptions>()
             .Bind(configuration.GetSection(SyncWorkerOptions.SectionName))
             .ValidateOnStart();
@@ -27,6 +34,15 @@ internal static class SyncServiceCollectionExtensions
         services.AddHostedService<SyncWorker>();
 
         return services;
+    }
+}
+
+internal sealed class JobRetryOptionsValidator : IValidateOptions<JobRetryOptions>
+{
+    public ValidateOptionsResult Validate(string? name, JobRetryOptions options)
+    {
+        var errors = options.Validate();
+        return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
     }
 }
 

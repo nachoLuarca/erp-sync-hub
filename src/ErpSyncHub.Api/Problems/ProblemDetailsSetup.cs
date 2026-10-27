@@ -15,10 +15,11 @@ internal static class ProblemDetailsSetup
         [StatusCodes.Status413PayloadTooLarge] = ("Cuerpo demasiado grande", "urn:erp-sync-hub:problem:payload-too-large"),
         [StatusCodes.Status415UnsupportedMediaType] = ("Tipo de contenido no admitido", "urn:erp-sync-hub:problem:unsupported-media-type"),
         [StatusCodes.Status500InternalServerError] = ("Error interno", "urn:erp-sync-hub:problem:internal-error"),
+        [StatusCodes.Status503ServiceUnavailable] = ("Servicio no disponible", "urn:erp-sync-hub:problem:service-unavailable"),
     };
 
     public static IServiceCollection AddApiProblemDetails(this IServiceCollection services) =>
-        services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
+        services.AddExceptionHandler<BadRequestExceptionHandler>().AddProblemDetails(options => options.CustomizeProblemDetails = context =>
         {
             var problem = context.ProblemDetails;
             var status = problem.Status ?? context.HttpContext.Response.StatusCode;
@@ -38,6 +39,9 @@ internal static class ProblemDetailsSetup
             problem.Extensions["traceId"] = context.HttpContext.Features.Get<IHttpActivityFeature>()?.Activity.TraceId.ToString()
                 ?? context.HttpContext.TraceIdentifier;
         });
+
+    /// <summary>Verdadero si hay un título y un tipo estándar para ese código.</summary>
+    public static bool Supports(int statusCode) => Known.ContainsKey(statusCode);
 
     public static string TitleFor(int statusCode) => Known[statusCode].Title;
 

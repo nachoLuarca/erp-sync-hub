@@ -8,7 +8,11 @@
         docker compose --profile tienda up -d --build
 
     (variables ERPSYNC_POSTGRES_PASSWORD, ERPSYNC_WC_WEBHOOK_SECRET, ERPSYNC_WP_DB_PASSWORD, ERPSYNC_WP_ADMIN_PASSWORD,
-    ERPSYNC_WC_CONSUMER_KEY y ERPSYNC_WC_CONSUMER_SECRET; ver docs/variables-de-entorno.md).
+    ERPSYNC_WC_CONSUMER_KEY, ERPSYNC_WC_CONSUMER_SECRET y ERPSYNC_ADMIN_API_KEY; ver docs/variables-de-entorno.md).
+
+    Además de la sincronización de stock y precios, comprueba la resiliencia: simula una caída de SAP, envía un pedido firmado
+    como lo haría WooCommerce, lo reintenta desde el panel al volver SAP y verifica que queda una sola orden, que las métricas y
+    el control de acceso del panel responden como corresponde y que los datos personales del pedido no llegaron a Seq.
 
     El script cambia stock y precios en el SAP simulado, dispara la sincronización por el panel y comprueba qué quedó en la
     tienda. Restaura los datos del SAP simulado al terminar. No toca nada más.
@@ -55,6 +59,13 @@ if (-not $key -or -not $secret) {
     throw 'Define ERPSYNC_WC_CONSUMER_KEY y ERPSYNC_WC_CONSUMER_SECRET (ver docs/variables-de-entorno.md).'
 }
 
+# El panel del hub exige una API key; si hay varias separadas por coma, basta la primera.
+$adminKey = ("$env:ERPSYNC_ADMIN_API_KEY" -split ',')[0].Trim()
+if (-not $adminKey) {
+    throw 'Define ERPSYNC_ADMIN_API_KEY (ver docs/variables-de-entorno.md).'
+}
+
+$hubHeaders = @{ 'X-Api-Key' = $adminKey }
 $auth = @{ Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("${key}:${secret}")) }
 $failures = [System.Collections.Generic.List[string]]::new()
 
@@ -88,9 +99,10 @@ function Set-MockItem([string]$itemCode, [hashtable]$changes) {
 
 function Invoke-Sync([switch]$Full) {
     $query = if ($Full) { '?full=true' } else { '' }
-    Invoke-RestMethod -Method Post -Uri "$HubUrl/admin/sync/inventory$query"
+    Invoke-RestMethod -Method Post -Uri "$HubUrl/admin/sync/inventory$query" -Headers $hubHeaders
 }
 
+$startedAt = [DateTime]::UtcNow
 Write-Host "Esperando al hub ($HubUrl) y a la tienda ($StoreUrl)..."
 Wait-Until { (Invoke-WebRequest -Uri "$HubUrl/health" -UseBasicParsing).StatusCode -eq 200 } 'que el hub responda en /health'
 Wait-Until { (Get-StoreProduct 'A00001').sku -eq 'A00001' } 'que la tienda acepte las credenciales y tenga el producto A00001 (¿terminó tienda-setup?)'
@@ -155,9 +167,102 @@ Assert-Equal $drill.stock_quantity 30 'A00001 stock'
 Assert-Equal $drill.regular_price 41990 'A00001 conserva el precio anterior'
 
 Write-Host '7. El panel consulta la última ejecución'
-$last = Invoke-RestMethod -Uri "$HubUrl/admin/sync/inventory/last"
+$last = Invoke-RestMethod -Uri "$HubUrl/admin/sync/inventory/last" -Headers $hubHeaders
 Assert-Equal $last.id $run.id 'la última es la que acaba de correr'
 Assert-Equal $last.trigger 'manual' 'disparador'
+
+function Get-StatusCode([scriptblock]$request) {
+    try {
+        & $request | Out-Null
+        200
+    }
+    catch {
+        if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { throw }
+    }
+}
+
+Write-Host '8. SAP caído: la sincronización de inventario falla con su error y se recupera sola al volver'
+Invoke-RestMethod -Method Put -Uri "$MockUrl/_mock/faults" -ContentType 'application/json' -Body '{"Outage":true}' | Out-Null
+$down = Invoke-Sync
+Assert-Equal $down.status 'failed' 'estado con SAP caído'
+Assert-Equal ($down.error.code -like 'sap.*') $true 'el error es de SAP'
+Invoke-RestMethod -Method Delete -Uri "$MockUrl/_mock/faults" | Out-Null
+Assert-Equal (Invoke-Sync).status 'succeeded' 'estado al volver SAP'
+
+Write-Host '9. Un pedido sobrevive a una caída de SAP y se completa sin duplicar la orden'
+$webhookSecret = $env:ERPSYNC_WC_WEBHOOK_SECRET
+if (-not $webhookSecret) { throw 'Define ERPSYNC_WC_WEBHOOK_SECRET (ver docs/variables-de-entorno.md).' }
+$orderId = [int]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() % 1000000) + 100000
+$fixture = Join-Path $PSScriptRoot '..\tests\Fixtures\woocommerce\order-processing.json'
+# Cada corrida usa un pedido y un cliente de la tienda nuevos: el hub guarda el mapeo cliente → CardCode, y el reinicio del SAP simulado
+# del final borra al cliente de SAP pero no ese mapeo.
+$orderJson = (Get-Content $fixture -Raw -Encoding UTF8) `
+    -replace '"id": 5501,', "`"id`": $orderId," `
+    -replace '"number": "5501"', "`"number`": `"$orderId`"" `
+    -replace '"customer_id": 4521', "`"customer_id`": $orderId"
+$body = [Text.Encoding]::UTF8.GetBytes($orderJson)
+$hmac = [Security.Cryptography.HMACSHA256]::new([Text.Encoding]::UTF8.GetBytes($webhookSecret))
+$signature = [Convert]::ToBase64String($hmac.ComputeHash($body))
+
+Invoke-RestMethod -Method Put -Uri "$MockUrl/_mock/faults" -ContentType 'application/json' -Body '{"Outage":true}' | Out-Null
+$webhook = Invoke-WebRequest -Method Post -Uri "$HubUrl/webhooks/woocommerce/orders" -Body $body -UseBasicParsing -ContentType 'application/json' -Headers @{
+    'X-WC-Webhook-Signature'   = $signature
+    'X-WC-Webhook-Topic'       = 'order.created'
+    'X-WC-Webhook-Delivery-ID' = [guid]::NewGuid().ToString('N')
+}
+Assert-Equal $webhook.StatusCode 202 'el webhook se acepta aunque SAP esté caído'
+
+function Get-Job { @((Invoke-RestMethod -Uri "$HubUrl/admin/jobs?externalId=$orderId" -Headers $hubHeaders).items)[0] }
+Wait-Until { $j = Get-Job; $j -and $j.status -eq 'retrying' } 'que el job quede esperando su reintento'
+$job = Get-Job
+Assert-Equal ($job.lastError.code.StartsWith('sap.')) $true 'el job guarda el error transitorio de SAP'
+Assert-Equal ($null -ne $job.nextAttemptAt) $true 'el job tiene hora de reintento'
+
+Invoke-RestMethod -Method Delete -Uri "$MockUrl/_mock/faults" | Out-Null
+$retried = Invoke-RestMethod -Method Post -Uri "$HubUrl/admin/jobs/$($job.id)/retry" -Headers $hubHeaders
+Assert-Equal $retried.status 'pending' 'el reintento manual deja el job pendiente'
+Wait-Until { (Get-Job).status -eq 'succeeded' } 'que el job termine al volver SAP'
+
+$sapLogin = @{ CompanyDB = $(if ($env:ERPSYNC_SAP_COMPANY_DB) { $env:ERPSYNC_SAP_COMPANY_DB } else { 'SBODemoCL' }); UserName = 'manager'; Password = 'manager' } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "$MockUrl/b1s/v1/Login" -ContentType 'application/json' -Body $sapLogin -SessionVariable sapSession | Out-Null
+$filter = [Uri]::EscapeDataString("NumAtCard eq 'WC-$orderId'")
+$orders = Invoke-RestMethod -Uri "$MockUrl/b1s/v1/Orders?`$filter=$filter&`$select=DocEntry" -WebSession $sapSession
+Assert-Equal @($orders.value).Count 1 'órdenes de SAP para el pedido (sin duplicar)'
+$finished = Invoke-RestMethod -Uri "$HubUrl/admin/jobs/$($job.id)" -Headers $hubHeaders
+Assert-Equal (@($finished.attempts | Where-Object { $_.outcome -eq 'failed' }).Count -gt 0) $true 'el historial conserva los intentos fallidos'
+Assert-Equal (@($finished.attempts)[-1]).outcome 'succeeded' 'el último intento es el exitoso'
+Assert-Equal ($null -eq $finished.payload) $true 'el detalle no trae el payload con datos personales por defecto'
+
+Write-Host '10. Panel: métricas y control de acceso'
+$metrics = Invoke-RestMethod -Uri "$HubUrl/admin/metrics" -Headers $hubHeaders
+Assert-Equal ($metrics.jobs.byStatus.succeeded -ge 1) $true 'las métricas cuentan el job exitoso'
+Assert-Equal ($null -ne $metrics.inventorySync.lastSucceededRun) $true 'las métricas traen la última sincronización de inventario exitosa'
+Assert-Equal (Get-StatusCode { Invoke-RestMethod -Uri "$HubUrl/admin/metrics" }) 401 'sin clave el panel responde'
+Assert-Equal (Get-StatusCode { Invoke-RestMethod -Uri "$HubUrl/admin/jobs" -Headers @{ 'X-Api-Key' = ('x' * 40) } }) 401 'con una clave incorrecta el panel responde'
+
+Write-Host '11. Los datos personales del pedido no llegan a los logs de Seq'
+$seqPort = Get-Port 'ERPSYNC_SEQ_HOST_PORT' 5202
+try {
+    Start-Sleep -Seconds 6   # Seq recibe los logs por lotes
+    # Se revisan los eventos de esta corrida (Seq conserva los de las anteriores), completos: mensaje, propiedades y excepción.
+    $from = [Uri]::EscapeDataString($startedAt.ToString('o'))
+    $events = Invoke-RestMethod -Uri "http://127.0.0.1:$seqPort/api/events?count=5000&render=true&fromDateUtc=$from" -TimeoutSec 30
+    # En Windows PowerShell 5.1 un arreglo JSON no se enumera al asignarlo con @(): se recorre la variable ya asignada.
+    $eventsJson = foreach ($event in $events) { $event | ConvertTo-Json -Depth 20 -Compress }
+    $eventsJson = @($eventsJson)
+
+    # Control positivo: Seq sí tiene los logs del job; sin esto, «cero resultados» podría significar que la revisión no ve nada.
+    $jobEvents = @(foreach ($event in $events) { if ($event.RenderedMessage -like "*Orden * creada en SAP para el pedido $orderId*") { $event } })
+    Assert-Equal ($jobEvents.Count -ge 1) $true "Seq tiene los logs del pedido $orderId (control)"
+    Assert-Equal (@($events).Count -gt 20) $true "eventos de Seq revisados ($(@($events).Count))"
+    foreach ($datum in 'Valentina', 'Muñoz', 'valentina@example.com', '18.765.432-7', '18765432', '+56912345678', 'Av. Providencia', 'Depto 56', '190.96.10.20', 'Entregar en conserjería') {
+        $hits = @($eventsJson | Where-Object { $_.IndexOf($datum, [StringComparison]::OrdinalIgnoreCase) -ge 0 })
+        Assert-Equal $hits.Count 0 "eventos de Seq que contienen '$datum'"
+    }
+}
+catch {
+    Write-Host "  AVISO: no se pudo consultar Seq en el puerto ${seqPort}; se omite la comprobación ($($_.Exception.Message))." -ForegroundColor Yellow
+}
 
 Write-Host 'Restaurando el SAP simulado...'
 Invoke-RestMethod -Method Post -Uri "$MockUrl/_mock/reset" | Out-Null

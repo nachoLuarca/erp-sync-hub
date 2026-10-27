@@ -24,7 +24,7 @@ public class SyncJobRunnerTests
         _sap.AddItem("A00001");
         _sap.AddItem("A00010");
         _queue.CompleteAsync(Arg.Any<ClaimedJob>(), Arg.Any<SapOrderReference>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(Result.Success()));
-        _queue.FailAsync(Arg.Any<ClaimedJob>(), Arg.Any<ResultError>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(Result.Success()));
+        _queue.FailAsync(Arg.Any<ClaimedJob>(), Arg.Any<ResultError>(), Arg.Any<RetryDecision>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(Result.Success()));
         _queue.ReleaseAsync(Arg.Any<ClaimedJob>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(Result.Success()));
     }
 
@@ -36,7 +36,7 @@ public class SyncJobRunnerTests
         await Runner(_sap).RunAsync(claim, JobTimeout, CancellationToken.None);
 
         await _queue.Received(1).CompleteAsync(claim, Arg.Is<SapOrderReference>(order => order.DocEntry == 1 && order.CardCode == "C18765432-7"), Arg.Any<CancellationToken>());
-        await _queue.DidNotReceiveWithAnyArgs().FailAsync(default!, default!, default);
+        await _queue.DidNotReceiveWithAnyArgs().FailAsync(default!, default!, default, default);
         await _queue.DidNotReceiveWithAnyArgs().ReleaseAsync(default!, default);
     }
 
@@ -47,13 +47,13 @@ public class SyncJobRunnerTests
 
         await Runner(_sap).RunAsync(claim, JobTimeout, CancellationToken.None);
 
-        await _queue.Received(1).FailAsync(claim, Arg.Is<ResultError>(error => error.Code == OrderSyncErrors.UnknownSku && error.Kind == ErrorKind.Rejected), Arg.Any<CancellationToken>());
+        await _queue.Received(1).FailAsync(claim, Arg.Is<ResultError>(error => error.Code == OrderSyncErrors.UnknownSku && error.Kind == ErrorKind.Rejected), Arg.Is<RetryDecision>(decision => decision.Action == RetryAction.Fail), Arg.Any<CancellationToken>());
         await _queue.DidNotReceiveWithAnyArgs().CompleteAsync(default!, default!, default);
         _logger.Collector.GetSnapshot().Any(record => record.Level == LogLevel.Warning && record.Message.Contains("order.unknown_sku", StringComparison.Ordinal)).ShouldBeTrue();
     }
 
     [Fact]
-    public async Task Un_fallo_pasajero_de_SAP_cierra_el_job_como_fallido_con_su_clasificacion()
+    public async Task Un_fallo_pasajero_de_SAP_deja_el_job_para_reintentar_con_su_clasificacion()
     {
         var transient = ResultError.Transient(SapErrors.Unreachable, "Sin conexión.");
         _sap.FailOn(nameof(FakeSapGateway.FindOrderByReferenceAsync), transient);
@@ -61,11 +61,11 @@ public class SyncJobRunnerTests
 
         await Runner(_sap).RunAsync(claim, JobTimeout, CancellationToken.None);
 
-        await _queue.Received(1).FailAsync(claim, transient, Arg.Any<CancellationToken>());
+        await _queue.Received(1).FailAsync(claim, transient, Arg.Is<RetryDecision>(decision => decision.Action == RetryAction.RetryLater), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task Una_excepcion_inesperada_no_tumba_al_worker_y_deja_el_job_fallido()
+    public async Task Una_excepcion_inesperada_no_tumba_al_worker_y_deja_el_job_para_reintentar()
     {
         var sap = Substitute.For<ISapGateway>();
         sap.FindOrderByReferenceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("bug en el adaptador"));
@@ -79,6 +79,7 @@ public class SyncJobRunnerTests
                 && error.Kind == ErrorKind.Unexpected
                 && error.Message.Contains("InvalidOperationException", StringComparison.Ordinal)
                 && error.Message.Contains("bug en el adaptador", StringComparison.Ordinal)),
+            Arg.Is<RetryDecision>(decision => decision.Action == RetryAction.RetryLater),
             Arg.Any<CancellationToken>());
         _logger.Collector.GetSnapshot().Any(record => record.Level == LogLevel.Error && record.Exception is InvalidOperationException).ShouldBeTrue();
     }
@@ -110,6 +111,7 @@ public class SyncJobRunnerTests
         await _queue.Received(1).FailAsync(
             claim,
             Arg.Is<ResultError>(error => error.Code == JobErrors.Timeout && error.Kind == ErrorKind.Transient),
+            Arg.Is<RetryDecision>(decision => decision.Action == RetryAction.RetryLater),
             Arg.Any<CancellationToken>());
     }
 
@@ -130,7 +132,7 @@ public class SyncJobRunnerTests
 
         await _queue.Received(1).ReleaseAsync(claim, Arg.Any<CancellationToken>());
         await _queue.DidNotReceiveWithAnyArgs().CompleteAsync(default!, default!, default);
-        await _queue.DidNotReceiveWithAnyArgs().FailAsync(default!, default!, default);
+        await _queue.DidNotReceiveWithAnyArgs().FailAsync(default!, default!, default, default);
     }
 
     [Fact]
@@ -157,7 +159,7 @@ public class SyncJobRunnerTests
 
         await Runner(_sap).RunAsync(claim, JobTimeout, CancellationToken.None);
 
-        await _queue.Received(1).FailAsync(claim, Arg.Is<ResultError>(error => error.Code == JobErrors.Unsupported), Arg.Any<CancellationToken>());
+        await _queue.Received(1).FailAsync(claim, Arg.Is<ResultError>(error => error.Code == JobErrors.Unsupported), Arg.Is<RetryDecision>(decision => decision.Action == RetryAction.Fail), Arg.Any<CancellationToken>());
         _sap.Calls.ShouldBeEmpty();
     }
 
@@ -214,7 +216,10 @@ public class SyncJobRunnerTests
     }
 
     private SyncJobRunner Runner(ISapGateway sap) =>
-        new(new OrderSyncService(sap, _mappings, new OrderSyncOptions(), new FakeLogger<OrderSyncService>()), _queue, _logger);
+        new(new OrderSyncService(sap, _mappings, new OrderSyncOptions(), new FakeLogger<OrderSyncService>()), _queue, Retry(), _logger);
+
+    private static RetryPolicy Retry(int maxAttempts = 12) =>
+        new(new JobRetryOptions { MaxAttempts = maxAttempts }, () => 1.0);
 
     private static ClaimedJob Claim(string? payload = null) =>
         new(Guid.CreateVersion7(), Guid.CreateVersion7(), 1, "worker-1", SyncSources.WooCommerce, "5501", SyncJobTypes.Order, payload ?? Fixtures.Read("woocommerce/order-processing.json"), 100013.55m);

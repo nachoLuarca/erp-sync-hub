@@ -12,6 +12,9 @@ internal static class ApiFactory
     /// <summary>Secreto de webhook de las pruebas (la Api exige al menos 16 caracteres).</summary>
     public const string WebhookSecret = "secreto-de-pruebas-del-webhook-0123456789";
 
+    /// <summary>Clave del panel de las pruebas (la Api exige al menos 32 caracteres).</summary>
+    public const string AdminApiKey = "clave-de-administracion-de-pruebas-0123456789";
+
     /// <param name="connectionString">Base de datos de la prueba.</param>
     /// <param name="migrateOnStartup">Aplica las migraciones al iniciar.</param>
     /// <param name="webhookSecret">Secreto del webhook; <see langword="null"/> lo deja sin configurar.</param>
@@ -22,6 +25,7 @@ internal static class ApiFactory
     /// consulta cada 50 ms para que las pruebas sean rápidas.
     /// </param>
     /// <param name="configure">Ajustes adicionales del host.</param>
+    /// <param name="adminApiKey">Clave(s) del panel, separadas por coma; <see langword="null"/> deja el panel sin configurar.</param>
     public static WebApplicationFactory<Program> Create(
         string connectionString,
         bool migrateOnStartup = false,
@@ -29,12 +33,14 @@ internal static class ApiFactory
         SapMockHost? sap = null,
         Func<HttpMessageHandler>? sapHandler = null,
         bool workerEnabled = false,
-        Action<IWebHostBuilder>? configure = null) =>
+        Action<IWebHostBuilder>? configure = null,
+        string? adminApiKey = AdminApiKey) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Database:ConnectionString", connectionString);
             builder.UseSetting("Database:MigrateOnStartup", migrateOnStartup ? "true" : "false");
             builder.UseSetting("Webhooks:WooCommerce:Secret", webhookSecret ?? string.Empty);
+            builder.UseSetting("Admin:ApiKey", adminApiKey ?? string.Empty);
 
             // Credenciales ficticias del SAP simulado; sin mock, apunta a una dirección que nadie atiende.
             builder.UseSetting("SAP:BaseUrl", "http://localhost:9");

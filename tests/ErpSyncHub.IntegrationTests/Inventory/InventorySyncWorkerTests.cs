@@ -182,6 +182,8 @@ public sealed class InventorySyncWorkerTests(PostgresFixture postgres) : IDispos
     [Theory]
     [InlineData("Sync:Inventory:Interval", "00:00:00", "Sync__Inventory__Interval")]
     [InlineData("Sync:Inventory:Interval", "2.00:00:00", "Sync__Inventory__Interval")]
+    [InlineData("Sync:Inventory:FullInterval", "00:05:00", "Sync__Inventory__FullInterval")]
+    [InlineData("Sync:Inventory:FullInterval", "31.00:00:00", "Sync__Inventory__FullInterval")]
     [InlineData("Sync:Inventory:Warehouses", " , ", "Sync__Inventory__Warehouses")]
     [InlineData("Sync:Inventory:Warehouses", "01,ALMACEN-DEMASIADO-LARGO", "Sync__Inventory__Warehouses")]
     [InlineData("Sync:Inventory:PriceList", "0", "Sync__Inventory__PriceList")]
@@ -198,6 +200,43 @@ public sealed class InventorySyncWorkerTests(PostgresFixture postgres) : IDispos
         var failure = Should.Throw<OptionsValidationException>(() => factory.CreateClient());
 
         failure.Message.ShouldContain(expected);
+    }
+
+    [Fact]
+    public async Task Una_completa_de_respaldo_programada_se_alterna_con_las_incrementales()
+    {
+        _store.AddProduct(11, "A00001");
+        await using var host = await WebhookHost.StartAsync(
+            postgres,
+            InventorySyncHost.Configure(
+                _store,
+                interval: TimeSpan.FromSeconds(1),
+                settings: new Dictionary<string, string> { ["Sync:Inventory:FullInterval"] = "00:00:03" }),
+            sap: _sap);
+
+        await host.WaitUntilAsync("SELECT count(*) >= 2 FROM inventory_sync_runs WHERE status = 'succeeded' AND \"full\"", "que haya dos completas programadas", TimeSpan.FromSeconds(40));
+
+        (await host.ScalarAsync<long>("SELECT count(*) FROM inventory_sync_runs WHERE status = 'succeeded' AND NOT \"full\"")).ShouldBeGreaterThanOrEqualTo(1);
+        (await host.ScalarAsync<long>("SELECT count(*) FROM inventory_sync_runs WHERE trigger <> 'scheduled'")).ShouldBe(0);
+        // La primera es la línea base; las demás completas respetan los 3 segundos del intervalo.
+        (await host.ScalarAsync<bool>("SELECT bool_and(gap >= interval '2.5 seconds') FROM (SELECT started_at - lag(started_at) OVER (ORDER BY started_at) AS gap FROM inventory_sync_runs WHERE status = 'succeeded' AND \"full\") fulls WHERE gap IS NOT NULL")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Con_la_completa_de_respaldo_desactivada_la_periodica_nunca_lee_todo_por_su_cuenta()
+    {
+        _store.AddProduct(11, "A00001");
+        await using var host = await WebhookHost.StartAsync(
+            postgres,
+            InventorySyncHost.Configure(
+                _store,
+                interval: TimeSpan.FromSeconds(1),
+                settings: new Dictionary<string, string> { ["Sync:Inventory:FullInterval"] = "00:00:00" }),
+            sap: _sap);
+
+        await host.WaitUntilAsync(SucceededRuns(3), "que haya tres sincronizaciones", TimeSpan.FromSeconds(40));
+
+        (await host.ScalarAsync<long>("SELECT count(*) FROM inventory_sync_runs WHERE \"full\"")).ShouldBe(0);
     }
 
     [Fact]

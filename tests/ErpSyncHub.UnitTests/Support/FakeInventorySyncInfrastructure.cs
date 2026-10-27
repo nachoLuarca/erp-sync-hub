@@ -29,9 +29,19 @@ internal sealed class FakeInventorySyncRunStore : IInventorySyncRunStore
     public Task<IReadOnlyList<InventorySyncRun>> GetRecentAsync(int limit, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<InventorySyncRun>>([.. Runs.OrderByDescending(run => run.StartedAt).Take(limit)]);
 
+    public Task<InventorySyncRun?> GetLastSucceededAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(Runs.Where(run => run.Status == InventorySyncStatus.Succeeded).OrderByDescending(run => run.StartedAt).FirstOrDefault());
+
     public Task<DateTimeOffset?> GetLastSucceededStartAsync(CancellationToken cancellationToken) =>
         Task.FromResult(Runs
             .Where(run => run.Status == InventorySyncStatus.Succeeded)
+            .OrderByDescending(run => run.StartedAt)
+            .Select(run => (DateTimeOffset?)run.StartedAt)
+            .FirstOrDefault());
+
+    public Task<DateTimeOffset?> GetLastSucceededFullStartAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(Runs
+            .Where(run => run.Status == InventorySyncStatus.Succeeded && run.Full)
             .OrderByDescending(run => run.StartedAt)
             .Select(run => (DateTimeOffset?)run.StartedAt)
             .FirstOrDefault());

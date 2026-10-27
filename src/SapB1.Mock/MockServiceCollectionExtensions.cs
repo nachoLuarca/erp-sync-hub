@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using SapB1.Mock.Admin;
 using SapB1.Mock.BusinessPartners;
 using SapB1.Mock.Configuration;
+using SapB1.Mock.Faults;
 using SapB1.Mock.Items;
 using SapB1.Mock.Orders;
 using SapB1.Mock.ServiceLayer;
@@ -27,6 +28,9 @@ internal static class MockServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ISessionStore, InMemorySessionStore>();
+        services.AddSingleton<FaultInjector>();
+        services.AddSingleton<IFaultInjector>(sp => sp.GetRequiredService<FaultInjector>());
+        services.AddSingleton<IResettable>(sp => sp.GetRequiredService<FaultInjector>());
         services.AddResettableStore<IItemStore, InMemoryItemStore>();
         services.AddResettableStore<IBusinessPartnerStore, InMemoryBusinessPartnerStore>();
         services.AddResettableStore<IOrderStore, InMemoryOrderStore>();
@@ -50,6 +54,9 @@ internal static class MockServiceCollectionExtensions
 
     public static WebApplication MapSapMock(this WebApplication app)
     {
+        // Las fallas simuladas se inyectan antes de que la petición llegue a cualquier endpoint del Service Layer.
+        app.UseMiddleware<FaultInjectionMiddleware>();
+
         var serviceLayer = app.MapGroup("/b1s/v1");
         serviceLayer.MapLogin();
 

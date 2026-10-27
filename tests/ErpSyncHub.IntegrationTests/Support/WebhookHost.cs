@@ -20,9 +20,14 @@ internal sealed class WebhookHost : IAsyncDisposable
         _factory = factory;
         ConnectionString = connectionString;
         Client = factory.CreateClient();
+        Client.DefaultRequestHeaders.Add("X-Api-Key", ApiFactory.AdminApiKey);
     }
 
+    /// <summary>Cliente con la clave del panel puesta en cada petición.</summary>
     public HttpClient Client { get; }
+
+    /// <summary>Un cliente nuevo sin ninguna cabecera, para comprobar lo que ve quien no tiene clave.</summary>
+    public HttpClient CreateAnonymousClient() => _factory.CreateClient();
 
     /// <summary>Los servicios de la Api en ejecución, para tomar una pieza (por ejemplo, el lock de la sincronización).</summary>
     public IServiceProvider Services => _factory.Services;
@@ -137,7 +142,7 @@ internal sealed class WebhookHost : IAsyncDisposable
         }
 
         var state = await ScalarAsync<string>(
-            "SELECT coalesce(string_agg(external_id || '=' || status || coalesce('/' || last_error_code, ''), ', '), 'sin jobs') FROM sync_jobs");
+            "SELECT coalesce(string_agg(external_id || '=' || status || '#' || attempt_count || '/' || cycle_attempts || coalesce('/' || last_error_code || ': ' || left(last_error_message, 300), ''), ', '), 'sin jobs') FROM sync_jobs");
         throw new TimeoutException($"Se agotó el tiempo esperando: {description}. Estado de los jobs: {state}.");
     }
 

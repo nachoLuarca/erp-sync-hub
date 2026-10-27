@@ -86,7 +86,7 @@ dotnet run --project src/ErpSyncHub.Api
 
 ### Variables de entorno
 
-No hay archivo de configuración en el repositorio: todo entra por variables de entorno, y las de Docker Compose llevan el prefijo `ERPSYNC_` para no chocar con otros proyectos locales. La tabla completa (obligatoria o no, valor por defecto y para qué sirve) está en [docs/variables-de-entorno.md](docs/variables-de-entorno.md). Las obligatorias para el entorno por defecto son `ERPSYNC_POSTGRES_PASSWORD` y `ERPSYNC_WC_WEBHOOK_SECRET`; con la tienda, además `ERPSYNC_WP_DB_PASSWORD` y `ERPSYNC_WP_ADMIN_PASSWORD`.
+No hay archivo de configuración en el repositorio: todo entra por variables de entorno, y las de Docker Compose llevan el prefijo `ERPSYNC_` para no chocar con otros proyectos locales. La tabla completa (obligatoria o no, valor por defecto y para qué sirve) está en [docs/variables-de-entorno.md](docs/variables-de-entorno.md). Las obligatorias para el entorno por defecto son `ERPSYNC_POSTGRES_PASSWORD` y `ERPSYNC_WC_WEBHOOK_SECRET`; con la tienda, además `ERPSYNC_WP_DB_PASSWORD` y `ERPSYNC_WP_ADMIN_PASSWORD`; y para usar el [panel](docs/panel.md), `ERPSYNC_ADMIN_API_KEY` (sin ella el panel responde 503 y el resto del hub funciona).
 
 **Windows (permanente, nivel usuario).** Abre una terminal nueva después de definirlas; las ya abiertas no las ven. Compose lee el entorno de la terminal desde la que lo ejecutas, así que no hace falta reiniciar Docker Desktop.
 
@@ -113,7 +113,7 @@ Los puertos del host se publican solo en `127.0.0.1` y se eligen para no chocar 
 
 | Servicio | En Docker | Con `dotnet run` | URL |
 |---|---|---|---|
-| API del hub (webhook, `/health`) | `5200` (`HUB_HOST_PORT`) | `5210` | http://localhost:5200/health |
+| API del hub (webhook, panel `/admin`, `/health`) | `5200` (`HUB_HOST_PORT`) | `5210` | http://localhost:5200/health |
 | Documentación de la API (Scalar) | — (solo en entorno `Development`) | `5210` | http://localhost:5210/scalar |
 | SAP simulado | `5201` (`SAP_MOCK_HOST_PORT`) | `5211` | http://localhost:5201/health |
 | Seq (logs estructurados) | `5202` (`SEQ_HOST_PORT`) | — | http://localhost:5202 |
@@ -197,7 +197,22 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5200/admin/sync/inventory
 Invoke-RestMethod -Uri http://localhost:5200/admin/sync/inventory/last
 ```
 
-El producto `A00001` de la tienda queda con stock 15 (20 en mano menos 5 comprometidos) y precio 41990. `./scripts/e2e-tienda.ps1` automatiza este recorrido, con varios casos más (stock sobrecomprometido, artículo congelado, precio inválido), contra el entorno levantado con la tienda. El detalle del flujo, el panel y los logs está en [flujo de stock y precios](docs/flujo-de-stock-y-precios.md).
+El producto `A00001` de la tienda queda con stock 15 (20 en mano menos 5 comprometidos) y precio 41990. El detalle del flujo, el panel y los logs está en [flujo de stock y precios](docs/flujo-de-stock-y-precios.md).
+
+### Resiliencia y panel
+
+Si SAP se cae, el hub sigue aceptando los webhooks de la tienda (202), los jobs quedan `retrying` con espera exponencial y jitter y se completan solos al volver SAP, sin duplicar la orden ni el cliente. Con los valores por defecto (12 intentos, 30 s de base, tope de 1 hora) un job atraviesa una caída de SAP de entre 2 h 32 min y 5 h 4 min de espera acumulada; si dura más, pasa al *dead letter* y se reintenta a mano. Los errores definitivos (SKU sin mapeo, RUT inválido) no se reintentan solos y quedan `failed`.
+
+Todo se ve y se corrige desde el [panel](docs/panel.md), que exige la cabecera `X-Api-Key` (una o varias claves en `ERPSYNC_ADMIN_API_KEY`, con [procedimiento de rotación](docs/variables-de-entorno.md#rotar-la-clave-sin-cortar-el-acceso)):
+
+```powershell
+$headers = @{ 'X-Api-Key' = $env:ERPSYNC_ADMIN_API_KEY }
+Invoke-RestMethod 'http://localhost:5200/admin/metrics' -Headers $headers                          # jobs por estado y última sincronización de inventario
+Invoke-RestMethod 'http://localhost:5200/admin/jobs?status=failed,dead_letter' -Headers $headers   # lo que necesita atención
+Invoke-RestMethod "http://localhost:5200/admin/jobs/$id/retry" -Method Post -Headers $headers      # reintento manual
+```
+
+Para ver el comportamiento sin esperar, el SAP simulado permite inyectar fallas (caída total, latencia, errores 5xx intermitentes, sesión expirada): ver [simulación de fallas](docs/sap-mock.md#simulación-de-fallas). `./scripts/e2e-tienda.ps1` recorre el entorno completo contra la tienda WooCommerce real: sincroniza stock y precios, simula una caída de SAP, envía un pedido firmado, lo reintenta desde el panel y verifica que queda una sola orden, que el control de acceso responde y que los datos personales del pedido no llegaron a Seq.
 
 ### Desarrollo
 
@@ -231,7 +246,7 @@ En CI (GitHub Actions) no hace falta nada de esto: el runner ya tiene Docker y l
 | 1 | `SapB1.Mock` y `SapB1.Client` (login y renovación de sesión, Items, BusinessPartners, Orders) | v0.2.0 | ✅ Completa |
 | 2 | Webhook con firma HMAC-SHA256, tabla `sync_jobs`, worker con cola en PostgreSQL | v0.3.0 | ✅ Completa |
 | 3 | Sincronización periódica de stock y precios SAP → WooCommerce | v0.4.0 | ✅ Completa |
-| 4 | Backoff, dead letter, panel, reintento manual, simulación de fallas en el mock | v0.5.0 | ⏳ Pendiente |
+| 4 | Backoff, dead letter, panel, reintento manual, simulación de fallas en el mock | v0.5.0 | ✅ Completa |
 | 5 | Despliegue, diagrama final, NuGet de `SapB1.Client`, release automatizado | v1.0.0 | ⏳ Pendiente |
 
 ## Documentación

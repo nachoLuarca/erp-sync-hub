@@ -93,6 +93,44 @@ public class SapGatewayErrorMappingTests
         result.Error.Message.ShouldContain($"HTTP {(int)status}");
     }
 
+    [Theory]
+    [InlineData("Business partner 'C18765432-7' does not exist", "Business partner 'C[RUT]' does not exist")]
+    [InlineData("Duplicate FederalTaxID 18.765.432-7 for valentina@example.com", "Duplicate FederalTaxID [RUT] for [correo]")]
+    public async Task El_mensaje_de_SAP_no_deja_pasar_el_RUT_ni_el_correo_del_cliente(string sapMessage, string expected)
+    {
+        _items.GetAsync("A1", Arg.Any<CancellationToken>()).ThrowsAsync(new SapB1ApiException(HttpStatusCode.BadRequest, -10, sapMessage));
+
+        var result = await Gateway().GetItemAsync("A1", CancellationToken.None);
+
+        result.Error!.Code.ShouldBe(SapErrors.Rejected);
+        result.Error.Message.ShouldContain(expected);
+        result.Error.Message.ShouldNotContain("18765432");
+        result.Error.Message.ShouldNotContain("valentina");
+    }
+
+    [Fact]
+    public async Task Una_conexion_cortada_a_mitad_de_la_respuesta_es_una_falla_de_red_pasajera()
+    {
+        _items.GetAsync("A1", Arg.Any<CancellationToken>()).ThrowsAsync(new IOException("Unexpected end of stream"));
+
+        var result = await Gateway().GetItemAsync("A1", CancellationToken.None);
+
+        result.Error!.Kind.ShouldBe(ErrorKind.Transient);
+        result.Error.Code.ShouldBe(SapErrors.Unreachable);
+        result.Error.Message.ShouldContain("Unexpected end of stream");
+    }
+
+    [Fact]
+    public async Task Un_IOException_sin_mensaje_se_describe_por_su_tipo()
+    {
+        _items.GetAsync("A1", Arg.Any<CancellationToken>()).ThrowsAsync(new IOException(string.Empty));
+
+        var result = await Gateway().GetItemAsync("A1", CancellationToken.None);
+
+        result.Error!.Code.ShouldBe(SapErrors.Unreachable);
+        result.Error.Message.ShouldContain(nameof(IOException));
+    }
+
     [Fact]
     public async Task Una_falla_de_red_es_pasajera()
     {

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using ErpSyncHub.IntegrationTests.Support;
+using Microsoft.AspNetCore.Hosting;
 
 namespace ErpSyncHub.IntegrationTests.Workers;
 
@@ -9,6 +10,14 @@ namespace ErpSyncHub.IntegrationTests.Workers;
 public class SyncWorkerTests(PostgresFixture postgres)
 {
     private static byte[] ProcessingOrder => Fixtures.ReadBytes("woocommerce/order-processing.json");
+
+    /// <summary>Reintentos rápidos para que las pruebas no esperen los 30 segundos de la espera base.</summary>
+    private static void FastRetries(IWebHostBuilder builder)
+    {
+        builder.UseSetting("Worker:Retry:MaxAttempts", "60");
+        builder.UseSetting("Worker:Retry:BaseDelay", "00:00:00.050");
+        builder.UseSetting("Worker:Retry:MaxDelay", "00:00:00.200");
+    }
 
     [Fact]
     public async Task Un_webhook_firmado_termina_como_una_orden_de_venta_en_SAP()
@@ -169,7 +178,7 @@ public class SyncWorkerTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Si_SAP_no_responde_el_job_queda_fallido_con_un_error_pasajero()
+    public async Task Si_SAP_no_responde_el_job_queda_esperando_un_reintento_con_un_error_pasajero()
     {
         await using var host = await WebhookHost.StartAsync(
             postgres,
@@ -177,15 +186,38 @@ public class SyncWorkerTests(PostgresFixture postgres)
             workerEnabled: true);
 
         await host.PostSignedAsync(ProcessingOrder);
-        await host.WaitUntilAsync("SELECT bool_and(status = 'failed') FROM sync_jobs", "que el job falle");
+        await host.WaitUntilAsync("SELECT bool_and(status = 'retrying') FROM sync_jobs", "que el job quede esperando un reintento");
 
+        (await host.ScalarAsync<bool>("SELECT next_attempt_at > updated_at FROM sync_jobs")).ShouldBeTrue();
+        (await host.ScalarAsync<DateTimeOffset?>("SELECT finished_at FROM sync_jobs")).ShouldBeNull();
         (await host.ScalarAsync<string>("SELECT last_error_code FROM sync_jobs")).ShouldBe("sap.unreachable");
         (await host.ScalarAsync<string>("SELECT error_kind FROM sync_attempts")).ShouldBe("transient");
         (await host.ScalarAsync<string>("SELECT last_error_message FROM sync_jobs")).ShouldNotBeNull().ShouldContain("Connection refused");
     }
 
     [Fact]
-    public async Task Con_credenciales_de_SAP_incorrectas_el_job_falla_con_un_error_de_sesion()
+    public async Task Un_fallo_pasajero_se_reintenta_solo_y_el_job_termina_cuando_SAP_vuelve()
+    {
+        using var sap = new SapMockHost();
+        await sap.SetFaultsAsync(new { Outage = true });
+        await using var host = await WebhookHost.StartAsync(postgres, FastRetries, sap: sap, workerEnabled: true);
+
+        await host.PostSignedAsync(ProcessingOrder);
+        await host.WaitUntilAsync("SELECT bool_and(attempt_count >= 3) FROM sync_jobs", "que el job se reintente varias veces con SAP caído");
+        (await host.ScalarAsync<string>("SELECT status FROM sync_jobs")).ShouldBeOneOf("retrying", "processing");
+
+        await sap.ClearFaultsAsync();
+        await host.WaitUntilAsync("SELECT bool_and(status = 'succeeded') FROM sync_jobs", "que el job termine al volver SAP");
+
+        (await host.ScalarAsync<int>("SELECT sap_doc_entry FROM sync_jobs")).ShouldBe(1);
+        (await host.ScalarAsync<string>("SELECT last_error_code FROM sync_jobs")).ShouldBeNull();
+        (await host.ScalarAsync<long>("SELECT count(*) FROM sync_attempts WHERE outcome = 'failed'")).ShouldBeGreaterThanOrEqualTo(2);
+        using var orders = await sap.GetAsync("Orders");
+        orders.RootElement.GetProperty("value").GetArrayLength().ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Con_credenciales_de_SAP_incorrectas_el_job_queda_esperando_un_reintento_con_un_error_de_sesion()
     {
         using var sap = new SapMockHost();
         await using var host = await WebhookHost.StartAsync(
@@ -195,7 +227,7 @@ public class SyncWorkerTests(PostgresFixture postgres)
             workerEnabled: true);
 
         await host.PostSignedAsync(ProcessingOrder);
-        await host.WaitUntilAsync("SELECT bool_and(status = 'failed') FROM sync_jobs", "que el job falle");
+        await host.WaitUntilAsync("SELECT bool_and(status = 'retrying') FROM sync_jobs", "que el job quede esperando un reintento");
 
         (await host.ScalarAsync<string>("SELECT last_error_code FROM sync_jobs")).ShouldBe("sap.session");
         (await host.ScalarAsync<string>("SELECT last_error_message FROM sync_jobs")).ShouldNotBeNull().ShouldContain("-304");

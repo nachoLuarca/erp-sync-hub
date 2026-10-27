@@ -39,6 +39,13 @@ internal sealed class InventorySyncOptionsValidator : IValidateOptions<Inventory
             errors.Add("Sync:Inventory:Interval debe estar entre 1 segundo y 24 horas (variable de entorno Sync__Inventory__Interval, por ejemplo 00:15:00).");
         }
 
+        if (options.FullInterval != TimeSpan.Zero && (options.FullInterval < options.Interval || options.FullInterval > TimeSpan.FromDays(30)))
+        {
+            errors.Add(
+                "Sync:Inventory:FullInterval debe ser cero (desactivada) o estar entre Sync:Inventory:Interval y 30 días " +
+                "(variable de entorno Sync__Inventory__FullInterval, por ejemplo 1.00:00:00).");
+        }
+
         var warehouses = options.WarehouseCodes;
         if (warehouses.Count == 0 || warehouses.Any(code => code.Length > MaxWarehouseCodeLength))
         {

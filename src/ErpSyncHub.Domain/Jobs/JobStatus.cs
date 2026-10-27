@@ -12,8 +12,22 @@ public enum JobStatus
     /// <summary>La orden quedó creada en SAP.</summary>
     Succeeded,
 
-    /// <summary>El intento falló. En esta fase no se reintenta solo: backoff y dead letter llegan después.</summary>
+    /// <summary>
+    /// Falló por un error transitorio y espera su próximo intento (<see cref="SyncJob.NextAttemptAt"/>), con espera exponencial.
+    /// </summary>
+    Retrying,
+
+    /// <summary>
+    /// Falló por un error definitivo (SKU sin mapeo, RUT inválido…): reintentar no cambiaría nada. Terminal; requiere que una
+    /// persona corrija el dato y lo reintente a mano.
+    /// </summary>
     Failed,
+
+    /// <summary>
+    /// Falló por errores transitorios y se agotaron los intentos automáticos. Terminal; queda a la vista en el panel para
+    /// revisarlo y reintentarlo a mano.
+    /// </summary>
+    DeadLetter,
 }
 
 /// <summary>Resultado de un <see cref="SyncAttempt"/>.</summary>

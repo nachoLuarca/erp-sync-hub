@@ -17,11 +17,20 @@ public interface IInventorySyncRunStore
     /// <summary>Las ejecuciones más recientes, de la última a la más antigua.</summary>
     Task<IReadOnlyList<InventorySyncRun>> GetRecentAsync(int limit, CancellationToken cancellationToken);
 
+    /// <summary>La ejecución más reciente que terminó sin errores, o <see langword="null"/> si ninguna.</summary>
+    Task<InventorySyncRun?> GetLastSucceededAsync(CancellationToken cancellationToken);
+
     /// <summary>
     /// Cuándo empezó la última ejecución que terminó sin errores. Es el punto desde el que la siguiente puede leer solo lo
     /// que cambió: las que terminaron con errores o fallaron no avanzan el corte.
     /// </summary>
     Task<DateTimeOffset?> GetLastSucceededStartAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Cuándo empezó la última ejecución completa (<see cref="InventorySyncRun.Full"/>) que terminó sin errores, sea programada o
+    /// manual; <see langword="null"/> si ninguna.
+    /// </summary>
+    Task<DateTimeOffset?> GetLastSucceededFullStartAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// Cierra como abandonadas las ejecuciones que quedaron en curso. Solo es seguro llamarlo con la exclusión mutua

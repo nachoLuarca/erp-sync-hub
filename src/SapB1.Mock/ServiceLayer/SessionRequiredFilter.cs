@@ -1,9 +1,10 @@
+using SapB1.Mock.Faults;
 using SapB1.Mock.Sessions;
 
 namespace SapB1.Mock.ServiceLayer;
 
 /// <summary>Exige una sesión vigente (cookie <c>B1SESSION</c>) y renueva su plazo de inactividad.</summary>
-internal sealed class SessionRequiredFilter(ISessionStore sessions) : IEndpointFilter
+internal sealed class SessionRequiredFilter(ISessionStore sessions, IFaultInjector faults) : IEndpointFilter
 {
     public const string CookieName = "B1SESSION";
 
@@ -13,6 +14,13 @@ internal sealed class SessionRequiredFilter(ISessionStore sessions) : IEndpointF
 
         if (!hasSession || string.IsNullOrEmpty(sessionId) || !sessions.TryTouch(sessionId))
         {
+            return SapResults.InvalidSession();
+        }
+
+        // Expiración forzada (fallas simuladas): la sesión vigente aparece expirada y se pierde, como si SAP la hubiera cerrado.
+        if (faults.ShouldExpireSession())
+        {
+            sessions.Remove(sessionId);
             return SapResults.InvalidSession();
         }
 

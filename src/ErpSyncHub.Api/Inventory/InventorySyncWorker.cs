@@ -1,6 +1,5 @@
 using ErpSyncHub.Application.Inventory;
 using ErpSyncHub.Application.Store;
-using ErpSyncHub.Domain.Inventory;
 using Microsoft.Extensions.Options;
 
 namespace ErpSyncHub.Api.Inventory;
@@ -39,7 +38,7 @@ internal sealed partial class InventorySyncWorker(
             }
         }
 
-        LogStarting(_options.Interval, _options.Warehouses, _options.PriceList, _options.PriceDecimals, _options.SapPageSize);
+        LogStarting(_options.Interval, _options.FullInterval, _options.Warehouses, _options.PriceList, _options.PriceDecimals, _options.SapPageSize);
 
         using var timer = new PeriodicTimer(_options.Interval, time);
         do
@@ -59,7 +58,7 @@ internal sealed partial class InventorySyncWorker(
             var runner = scope.ServiceProvider.GetRequiredService<InventorySyncRunner>();
 
             // El resultado ya quedó registrado y logueado por el runner; aquí solo importa que un fallo no mate al servicio.
-            await runner.RunAsync(InventorySyncTrigger.Scheduled, full: false, stoppingToken);
+            await runner.RunScheduledAsync(stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -95,9 +94,9 @@ internal sealed partial class InventorySyncWorker(
 
     [LoggerMessage(
         Level = LogLevel.Information,
-        Message = "Sincronización periódica de stock y precios activa: cada {Interval}, almacenes {Warehouses}, lista de precios {PriceList}, " +
-                  "{PriceDecimals} decimales, páginas de {PageSize} artículos")]
-    private partial void LogStarting(TimeSpan interval, string warehouses, int priceList, int priceDecimals, int pageSize);
+        Message = "Sincronización periódica de stock y precios activa: cada {Interval}, completa de respaldo cada {FullInterval}, " +
+                  "almacenes {Warehouses}, lista de precios {PriceList}, {PriceDecimals} decimales, páginas de {PageSize} artículos")]
+    private partial void LogStarting(TimeSpan interval, TimeSpan fullInterval, string warehouses, int priceList, int priceDecimals, int pageSize);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Sincronización periódica de stock y precios detenida")]
     private partial void LogStopped();

@@ -1,3 +1,4 @@
+using SapB1.Mock.Faults;
 using SapB1.Mock.Items;
 using SapB1.Mock.Sessions;
 
@@ -30,5 +31,6 @@ internal static class AdminEndpoints
         });
 
         admin.MapItemAdmin();
+        admin.MapFaults();
     }
 }

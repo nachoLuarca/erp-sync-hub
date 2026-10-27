@@ -21,6 +21,14 @@ public sealed class InventorySyncOptions
     public TimeSpan Interval { get; set; } = TimeSpan.FromMinutes(15);
 
     /// <summary>
+    /// Cada cuánto, como respaldo, la sincronización periódica es completa: lee todo el maestro y envía todo, ignorando la foto. Cubre
+    /// el caso de que <c>UpdateDate</c> de SAP no refleje algún movimiento de stock, o de que alguien edite la tienda a mano. Se
+    /// mide desde la última completa exitosa (también la manual) y debe ser al menos igual a <see cref="Interval"/>. Cero la
+    /// desactiva. Por defecto, 24 horas.
+    /// </summary>
+    public TimeSpan FullInterval { get; set; } = TimeSpan.FromHours(24);
+
+    /// <summary>
     /// Códigos de los almacenes de SAP cuyo stock se publica, separados por comas (por ejemplo <c>01,02</c>). El stock
     /// disponible es la suma de lo que hay en mano menos lo comprometido en ellos.
     /// </summary>
