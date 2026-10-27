@@ -268,6 +268,7 @@ public class JobRetryPanelTests(PostgresFixture postgres)
 
         var response = await RetryManyAsync(host, [.. ids]);
 
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         using var body = await WebhookHost.ReadJsonAsync(response);
         body.RootElement.GetProperty("retried").GetInt32().ShouldBe(100);
         (await host.ScalarAsync<long>("SELECT count(*) FROM sync_jobs WHERE status = 'pending'")).ShouldBe(100);
