@@ -8,7 +8,8 @@
         docker compose --profile tienda up -d --build
 
     (variables ERPSYNC_POSTGRES_PASSWORD, ERPSYNC_WC_WEBHOOK_SECRET, ERPSYNC_WP_DB_PASSWORD, ERPSYNC_WP_ADMIN_PASSWORD,
-    ERPSYNC_WC_CONSUMER_KEY, ERPSYNC_WC_CONSUMER_SECRET y ERPSYNC_ADMIN_OPERATE_API_KEYS; ver docs/variables-de-entorno.md).
+    ERPSYNC_WC_CONSUMER_KEY, ERPSYNC_WC_CONSUMER_SECRET y ERPSYNC_ADMIN_OPERATE_API_KEYS; ver docs/variables-de-entorno.md). Con
+    ERPSYNC_ADMIN_READ_API_KEYS también comprueba que la clave de lectura consulta pero no puede actuar.
 
     Además de la sincronización de stock y precios, comprueba la resiliencia: simula una caída de SAP, envía un pedido firmado
     como lo haría WooCommerce, lo reintenta desde el panel al volver SAP y verifica que queda una sola orden, que las métricas y
@@ -276,6 +277,27 @@ $audit = Invoke-RestMethod -Uri "$HubUrl/admin/audit?action=circuit.close" -Head
 Assert-Equal ($audit.totalItems -ge 1) $true 'la acción quedó en la auditoría'
 Assert-Equal $audit.items[0].keyFingerprint.Length 8 'la auditoría guarda la huella de la clave (8 caracteres), no la clave'
 Assert-Equal ($audit.items[0].keyFingerprint -eq $adminKey) $false 'la auditoría no guarda la clave'
+
+# La clave de lectura es opcional: si se define, se comprueba que consulta pero no puede actuar.
+$readKey = ("$env:ERPSYNC_ADMIN_READ_API_KEYS" -split ',')[0].Trim()
+if ($readKey) {
+    Write-Host '13. Clave de lectura: consulta el panel y el circuito, pero cualquier acción responde 403'
+    $readHeaders = @{ 'X-Api-Key' = $readKey }
+    $readMetrics = Invoke-RestMethod -Uri "$HubUrl/admin/metrics" -Headers $readHeaders
+    Assert-Equal @($readMetrics.circuits).Count 1 'con la clave de lectura, las métricas traen el circuito'
+    Assert-Equal @(Invoke-RestMethod -Uri "$HubUrl/admin/circuit-breakers" -Headers $readHeaders)[0].name 'sap' 'con la clave de lectura se ve el circuito'
+    Assert-Equal (Get-StatusCode { Invoke-RestMethod -Uri "$HubUrl/admin/jobs" -Headers $readHeaders }) 200 'con la clave de lectura se listan los jobs'
+    Assert-Equal (Get-StatusCode { Invoke-RestMethod -Method Post -Uri "$HubUrl/admin/sync/inventory" -Headers $readHeaders }) 403 'disparar la sincronización con la clave de lectura'
+    Assert-Equal (Get-StatusCode { Invoke-RestMethod -Method Post -Uri "$HubUrl/admin/circuit-breakers/sap/close" -Headers $readHeaders }) 403 'cerrar el circuito con la clave de lectura'
+    Assert-Equal (Get-StatusCode { Invoke-RestMethod -Method Post -Uri "$HubUrl/admin/jobs/$($job.id)/retry" -Headers $readHeaders }) 403 'reintentar un job con la clave de lectura'
+    Assert-Equal (Get-StatusCode { Invoke-RestMethod -Method Delete -Uri "$HubUrl/admin/mappings/products?sku=A00001" -Headers $readHeaders }) 403 'eliminar un mapeo con la clave de lectura'
+    $mappings = Invoke-RestMethod -Uri "$HubUrl/admin/mappings/customers" -Headers $readHeaders
+    Assert-Equal $mappings.personalDataHidden $true 'los mapeos de cliente salen con los datos personales ocultos'
+    Assert-Equal (Get-StatusCode { Invoke-RestMethod -Uri "$HubUrl/admin/mappings/customers?includePersonalData=true" -Headers $readHeaders }) 403 'pedir datos personales de los mapeos con la clave de lectura'
+}
+else {
+    Write-Host '13. (omitido) Define ERPSYNC_ADMIN_READ_API_KEYS para comprobar la clave de lectura.' -ForegroundColor Yellow
+}
 
 Write-Host 'Restaurando el SAP simulado...'
 Invoke-RestMethod -Method Post -Uri "$MockUrl/_mock/reset" | Out-Null
