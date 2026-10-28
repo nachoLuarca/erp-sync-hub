@@ -81,9 +81,22 @@ services:
       Worker__Retry__MaxAttempts: ${ERPSYNC_JOB_MAX_ATTEMPTS:-12}
       Worker__Retry__BaseDelay: ${ERPSYNC_JOB_RETRY_BASE_DELAY:-00:00:30}
       Worker__Retry__MaxDelay: ${ERPSYNC_JOB_RETRY_MAX_DELAY:-01:00:00}
-      # Sin clave, el panel (/admin/*) queda deshabilitado (503); admite varias claves separadas por coma para rotarlas.
+      # Claves del panel (/admin/*): las de lectura consultan; las de operación también ejecutan acciones. Sin ninguna, el panel queda
+      # deshabilitado (503). Cada variable admite varias claves separadas por coma para rotarlas.
       Admin__ReadApiKeys: ${ERPSYNC_ADMIN_READ_API_KEYS:-}
       Admin__OperateApiKeys: ${ERPSYNC_ADMIN_OPERATE_API_KEYS:-}
+      # Circuit breaker de SAP: se abre con fallas pasajeras consecutivas dentro de la ventana (o de inmediato si rechaza las credenciales)
+      # y se prueba con un enfriamiento que se duplica hasta el tope.
+      Circuit__Enabled: ${ERPSYNC_CIRCUIT_ENABLED:-true}
+      Circuit__FailureThreshold: ${ERPSYNC_CIRCUIT_FAILURE_THRESHOLD:-5}
+      Circuit__FailureWindow: ${ERPSYNC_CIRCUIT_FAILURE_WINDOW:-00:05:00}
+      Circuit__CooldownBase: ${ERPSYNC_CIRCUIT_COOLDOWN_BASE:-00:00:30}
+      Circuit__CooldownMax: ${ERPSYNC_CIRCUIT_COOLDOWN_MAX:-00:15:00}
+      Circuit__CredentialsCooldownBase: ${ERPSYNC_CIRCUIT_CREDENTIALS_COOLDOWN_BASE:-00:15:00}
+      Circuit__CredentialsCooldownMax: ${ERPSYNC_CIRCUIT_CREDENTIALS_COOLDOWN_MAX:-01:00:00}
+      Circuit__ProbeLease: ${ERPSYNC_CIRCUIT_PROBE_LEASE:-00:00:30}
+      # Largo máximo de los mensajes de SAP y de la tienda que se guardan en el job y en los logs.
+      Messages__ExternalMaxLength: ${ERPSYNC_EXTERNAL_MESSAGE_MAX_LENGTH:-300}
     ports:
       - "127.0.0.1:${ERPSYNC_HUB_HOST_PORT:-5200}:8080"
   # --- Tienda WooCommerce (opcional): docker compose --profile tienda up -d ---

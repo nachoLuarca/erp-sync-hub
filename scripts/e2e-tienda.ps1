@@ -264,6 +264,19 @@ catch {
     Write-Host "  AVISO: no se pudo consultar Seq en el puerto ${seqPort}; se omite la comprobación ($($_.Exception.Message))." -ForegroundColor Yellow
 }
 
+Write-Host '12. Circuit breaker de SAP: visible en el panel y en las métricas, y se cierra a mano con auditoría'
+$circuits = @(Invoke-RestMethod -Uri "$HubUrl/admin/circuit-breakers" -Headers $hubHeaders)
+Assert-Equal $circuits[0].name 'sap' 'el panel lista el circuito de SAP'
+Assert-Equal $circuits[0].state 'closed' 'tras recuperarse SAP el circuito está cerrado'
+$metricsAfter = Invoke-RestMethod -Uri "$HubUrl/admin/metrics" -Headers $hubHeaders
+Assert-Equal @($metricsAfter.circuits).Count 1 'las métricas traen el circuito'
+$closeResponse = Invoke-RestMethod -Method Post -Uri "$HubUrl/admin/circuit-breakers/sap/close" -Headers $hubHeaders
+Assert-Equal $closeResponse.state 'closed' 'cerrar el circuito a mano responde con el estado'
+$audit = Invoke-RestMethod -Uri "$HubUrl/admin/audit?action=circuit.close" -Headers $hubHeaders
+Assert-Equal ($audit.totalItems -ge 1) $true 'la acción quedó en la auditoría'
+Assert-Equal $audit.items[0].keyFingerprint.Length 8 'la auditoría guarda la huella de la clave (8 caracteres), no la clave'
+Assert-Equal ($audit.items[0].keyFingerprint -eq $adminKey) $false 'la auditoría no guarda la clave'
+
 Write-Host 'Restaurando el SAP simulado...'
 Invoke-RestMethod -Method Post -Uri "$MockUrl/_mock/reset" | Out-Null
 
