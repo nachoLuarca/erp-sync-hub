@@ -80,7 +80,7 @@ public sealed class SapCircuitBreakerTests(PostgresFixture postgres) : IDisposab
             (await host.PostSignedAsync(OrderWithId(id))).StatusCode.ShouldBe(System.Net.HttpStatusCode.Accepted);
         }
 
-        await host.WaitUntilAsync("SELECT state = 'open' FROM circuit_breakers WHERE name = 'sap'", "que el circuito se abra");
+        await host.WaitUntilAsync("SELECT coalesce(bool_or(state = 'open'), false) FROM circuit_breakers WHERE name = 'sap'", "que el circuito se abra");
 
         // Con el circuito abierto nadie toma jobs: los intentos dejan de crecer aunque las pruebas semiabiertas sigan fallando.
         await Task.Delay(500); // deja terminar los intentos que venían en vuelo
@@ -95,6 +95,75 @@ public sealed class SapCircuitBreakerTests(PostgresFixture postgres) : IDisposab
 
         (await StateAsync(host)).ShouldBe("closed");
         (await host.ScalarAsync<long>("SELECT count(DISTINCT sap_doc_entry) FROM sync_jobs")).ShouldBe(6);
+    }
+
+    private Task<WebhookHost> StartWithWorkerAsync(params (string Key, string Value)[] settings) =>
+        WebhookHost.StartAsync(
+            postgres,
+            builder =>
+            {
+                builder.UseSetting("Worker:Concurrency", "2");
+                builder.UseSetting("Worker:Retry:MaxAttempts", "100");
+                builder.UseSetting("Worker:Retry:BaseDelay", "00:00:00.100");
+                builder.UseSetting("Worker:Retry:MaxDelay", "00:00:00.300");
+                builder.UseSetting("Circuit:FailureThreshold", "3");
+                builder.UseSetting("Circuit:CooldownBase", "00:00:01");
+                builder.UseSetting("Circuit:CooldownMax", "00:00:04");
+                foreach (var (key, value) in settings)
+                {
+                    builder.UseSetting(key, value);
+                }
+            },
+            sap: _sap,
+            workerEnabled: true);
+
+    [Fact]
+    public async Task Mientras_SAP_sigue_caido_las_pruebas_fallan_y_el_enfriamiento_crece_hasta_el_tope()
+    {
+        await _sap.SetFaultsAsync(new { Outage = true });
+        await using var host = await StartWithWorkerAsync();
+        (await host.PostSignedAsync(OrderWithId(6001))).StatusCode.ShouldBe(System.Net.HttpStatusCode.Accepted);
+
+        // Enfriamientos de 1, 2 y 4 segundos: la tercera apertura ya está en el tope configurado.
+        await host.WaitUntilAsync("SELECT coalesce(bool_or(open_count >= 4), false) FROM circuit_breakers WHERE name = 'sap'", "que fallen varias pruebas seguidas", TimeSpan.FromSeconds(30));
+
+        var cooldown = await host.ScalarAsync<double>("SELECT extract(epoch FROM next_probe_at - opened_at)::float8 FROM circuit_breakers WHERE name = 'sap'");
+        cooldown.ShouldBe(4, tolerance: 0.5);
+        (await host.ScalarAsync<string>("SELECT state FROM circuit_breakers WHERE name = 'sap'")).ShouldBeOneOf("open", "half_open");
+
+        await _sap.ClearFaultsAsync();
+        await host.WaitUntilAsync("SELECT bool_and(status = 'succeeded') FROM sync_jobs", "que el pedido termine al volver SAP", TimeSpan.FromSeconds(30));
+        (await StateAsync(host)).ShouldBe("closed");
+    }
+
+    [Fact]
+    public async Task Errores_intermitentes_de_SAP_no_abren_el_circuito_porque_cada_exito_reinicia_la_cuenta()
+    {
+        // Falla una de cada diez peticiones: nunca hay tres fallas seguidas, aunque SAP esté lejos de sano. Un solo bucle, para que las
+        // peticiones de un intento no se mezclen con las de otro.
+        await _sap.SetFaultsAsync(new { ErrorEveryNth = 10, ErrorStatusCode = 500 });
+        await using var host = await StartWithWorkerAsync(("Worker:Concurrency", "1"));
+
+        for (var id = 6001; id <= 6004; id++)
+        {
+            (await host.PostSignedAsync(OrderWithId(id))).StatusCode.ShouldBe(System.Net.HttpStatusCode.Accepted);
+        }
+
+        await host.WaitUntilAsync("SELECT count(*) = 4 AND bool_and(status = 'succeeded') FROM sync_jobs", "que los pedidos terminen a pesar de los errores", TimeSpan.FromSeconds(60));
+
+        (await host.ScalarAsync<long>("SELECT count(*) FROM circuit_breakers WHERE state <> 'closed' OR open_count > 0")).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Un_SAP_demasiado_lento_cuenta_como_falla_y_abre_el_circuito()
+    {
+        await _sap.SetFaultsAsync(new { LatencyMs = 3000 });
+        await using var host = await StartWithWorkerAsync(("SAP:RequestTimeout", "00:00:00.300"));
+        (await host.PostSignedAsync(OrderWithId(6001))).StatusCode.ShouldBe(System.Net.HttpStatusCode.Accepted);
+
+        await host.WaitUntilAsync("SELECT coalesce(bool_or(state <> 'closed'), false) FROM circuit_breakers WHERE name = 'sap'", "que los tiempos agotados abran el circuito", TimeSpan.FromSeconds(30));
+
+        (await host.ScalarAsync<string>("SELECT last_error_code FROM circuit_breakers WHERE name = 'sap'")).ShouldBeOneOf(SapErrors.Timeout, SapErrors.Unreachable); // según dónde lo corte el cliente HTTP (el login o la consulta)
     }
 
     [Fact]
