@@ -96,7 +96,7 @@ Todo se configura por variables de entorno (`:` se escribe `__`); ver también [
 | `Worker__Retry__MaxAttempts` | `12` | Intentos de un job antes de pasar al dead letter. |
 | `Worker__Retry__BaseDelay` | `00:00:30` | Espera tras el primer fallo transitorio; se duplica con cada intento. |
 | `Worker__Retry__MaxDelay` | `01:00:00` | Tope de la espera entre intentos. |
-| `Admin__ApiKey` | — | Clave(s) de acceso al [panel](panel.md), separadas por coma. Sin ninguna, el panel responde 503. |
+| `Admin__ReadApiKeys` · `Admin__OperateApiKeys` | — | Claves de acceso al [panel](panel.md): lectura y operación, cada una con varias separadas por coma. Sin ninguna, el panel responde 503. |
 | `Serilog__MinimumLevel__Default` | `Information` | Nivel de registro. |
 
 La configuración se valida al iniciar: si falta algo o es inválido, el servicio no arranca y el mensaje dice qué variable corregir.
@@ -113,8 +113,10 @@ Quedan en `sync_jobs.last_error_code` y en el intento (`sync_attempts`), con la 
 | `order.customer_unidentifiable` | definitivo | Compra como invitado y sin correo. |
 | `order.inactive_customer` · `order.inactive_item` | definitivo | El cliente o el artículo está inhabilitado o congelado en SAP. |
 | `order.unknown_sku` | definitivo | El SKU no tiene mapeo ni existe como artículo en SAP. |
-| `sap.rejected` | definitivo | SAP rechazó la operación (HTTP 4xx); el mensaje trae el motivo de SAP. |
-| `sap.server_error` · `sap.session` · `sap.unreachable` · `sap.timeout` | pasajero | SAP no pudo atender: error del servidor, sesión, red o tiempo de espera. |
+| `sap.rejected` | definitivo | SAP rechazó la operación (HTTP 4xx); el mensaje trae el motivo de SAP. Si el cliente o el artículo de un **mapeo guardado** ya no existe en SAP, el mapeo se elimina y se resuelve de nuevo una vez en el mismo intento (advertencia en el log); solo queda `failed` si SAP sigue rechazando. |
+| `sap.server_error` · `sap.session` · `sap.unreachable` · `sap.timeout` | pasajero | SAP no pudo atender: error del servidor, sesión, red o tiempo de espera. Fallas sostenidas abren el [circuit breaker](adr/0011-circuit-breaker-de-sap.md). |
+| `sap.invalid_credentials` | pasajero | SAP rechazó el usuario, la contraseña o la sociedad al iniciar sesión (−304). Abre el circuit breaker de inmediato; corrige `SAP__*` y ciérralo desde el panel. |
+| `circuit.open` | pasajero (no gasta intento) | El circuito de SAP está abierto: no se llamó a SAP y el job vuelve a la cola sin descontar un intento. |
 | `sap.customer_conflict` | pasajero | SAP dijo que el cliente existe pero no se pudo leer. |
 | `job.timeout` | pasajero | El job superó su tiempo máximo (menor que el lease). |
 | `job.unexpected` | inesperado (se reintenta) | Un defecto o un problema local; el log tiene el detalle con la excepción completa y nivel `Error`. Si se repite hasta agotar los intentos, queda en el dead letter. |

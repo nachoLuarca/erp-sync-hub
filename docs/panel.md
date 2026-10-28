@@ -4,19 +4,25 @@ API para ver qué está haciendo el hub y corregir lo que falle, sin entrar a la
 
 ## Acceso
 
-Todo lo que cuelga de `/admin` exige la cabecera **`X-Api-Key`** con una de las claves de `ERPSYNC_ADMIN_API_KEY` (en el hub, `Admin__ApiKey`). Cómo generarla y rotarla está en [variables de entorno](variables-de-entorno.md#clave-del-panel).
+Todo lo que cuelga de `/admin` exige la cabecera **`X-Api-Key`** con una clave de **lectura** (`ERPSYNC_ADMIN_READ_API_KEYS`) o de **operación** (`ERPSYNC_ADMIN_OPERATE_API_KEYS`; en el hub, `Admin__ReadApiKeys` y `Admin__OperateApiKeys`). Cómo generarlas y rotarlas está en [variables de entorno](variables-de-entorno.md#claves-del-panel); las decisiones, en el [ADR 0012](adr/0012-roles-del-panel-y-auditoria.md).
 
 ```powershell
-$headers = @{ 'X-Api-Key' = $env:ERPSYNC_ADMIN_API_KEY }
+$headers = @{ 'X-Api-Key' = $env:ERPSYNC_ADMIN_OPERATE_API_KEYS.Split(',')[0] }
 Invoke-RestMethod http://localhost:5200/admin/metrics -Headers $headers
 ```
+
+| Nivel | Endpoints |
+|---|---|
+| **Lectura** | `GET /admin/jobs`, `GET /admin/jobs/{id}`, `GET /admin/metrics`, `GET /admin/sync/inventory/last` y `/runs`, `GET /admin/mappings/*`, `GET /admin/circuit-breakers`, `GET /admin/audit` |
+| **Operación** (además) | `POST /admin/jobs/{id}/retry`, `POST /admin/jobs/retry`, `POST /admin/sync/inventory`, `POST /admin/circuit-breakers/{name}/close`, `DELETE /admin/mappings/products`, `DELETE /admin/mappings/customers` |
 
 | Respuesta | Cuándo |
 |---|---|
 | `401` | Falta la cabecera, la clave es incorrecta o la cabecera está repetida. Aplica también a rutas que no existen bajo `/admin`. |
+| `403` | La clave es de lectura y la acción exige una de operación. La acción no se ejecuta. |
 | `503` | El hub no tiene ninguna clave configurada: el panel está deshabilitado (el resto del hub funciona). |
 
-Los errores son [ProblemDetails (RFC 9457)](https://www.rfc-editor.org/rfc/rfc9457) en español. El webhook de WooCommerce, `/health` y la documentación de desarrollo no usan esta clave.
+Los errores son [ProblemDetails (RFC 9457)](https://www.rfc-editor.org/rfc/rfc9457) en español. El webhook de WooCommerce, `/health` y la documentación de desarrollo no usan estas claves.
 
 ## Estados de un job
 
@@ -163,7 +169,8 @@ Invoke-RestMethod http://localhost:5200/admin/jobs/retry -Method Post -Headers $
   "inventorySync": {
     "lastRun": { "id": "…", "trigger": "scheduled", "status": "succeeded", "full": false, "items": { "read": 24, "updated": 1, "unchanged": 23, "skipped": 0, "failed": 0 }, "…": "…" },
     "lastSucceededRun": { "…": "…" }
-  }
+  },
+  "circuits": [ { "name": "sap", "state": "closed", "…": "…" } ]
 }
 ```
 
@@ -176,9 +183,86 @@ Invoke-RestMethod http://localhost:5200/admin/jobs/retry -Method Post -Headers $
 
 Ver [flujo de stock y precios](flujo-de-stock-y-precios.md#panel): `POST /admin/sync/inventory` (con `?full=true` para una completa), `GET /admin/sync/inventory/last` y `GET /admin/sync/inventory/runs`.
 
+## Circuit breaker de SAP
+
+Detalle de la decisión en el [ADR 0011](adr/0011-circuit-breaker-de-sap.md).
+
+### `GET /admin/circuit-breakers`
+
+El estado de cada circuito (hoy, `sap`). También viene en `circuits` de `/admin/metrics` y en el chequeo `sap` de `/health`.
+
+```json
+[
+  {
+    "name": "sap",
+    "state": "open",
+    "reason": "transient_failures",
+    "openedAt": "2026-10-28T14:02:11+00:00",
+    "openCount": 2,
+    "nextProbeAt": "2026-10-28T14:03:41+00:00",
+    "consecutiveFailures": 5,
+    "lastErrorCode": "sap.unreachable",
+    "lastErrorMessage": "No se pudo conectar con SAP: Connection refused",
+    "updatedAt": "2026-10-28T14:02:41+00:00"
+  }
+]
+```
+
+`state` es `closed` (todo normal), `open` (el worker no toma jobs ni se llama a SAP) o `half_open` (hay una prueba en curso). `reason` es `transient_failures` o `credentials_rejected`. `openCount` crece con cada prueba fallida y define el enfriamiento (se duplica hasta el tope).
+
+### `POST /admin/circuit-breakers/{name}/close`
+
+Lo cierra a mano, sin esperar la prueba: úsalo después de corregir la causa (por ejemplo, las credenciales de SAP). Responde 200 con el estado resultante, también si ya estaba cerrado; 404 si el circuito no existe. Si SAP sigue fallando, volverá a abrirse con las siguientes fallas. Queda en la auditoría.
+
+## Mapeos
+
+Equivalencias SKU ↔ `ItemCode` y cliente ↔ `CardCode`. Si SAP rechaza una orden y alguno ya no existe en SAP, el hub los elimina y los resuelve de nuevo solo (una vez por intento, con una advertencia en el log); estos endpoints sirven para revisarlos y corregir a mano.
+
+### `GET /admin/mappings/products`
+
+Mapeos de producto, ordenados por SKU. Filtros: `sku` e `itemCode` (contienen el texto, sin distinguir mayúsculas; `%` y `_` valen como texto), `page` y `pageSize` (hasta 100).
+
+### `GET /admin/mappings/customers`
+
+Mapeos de cliente, del más reciente al más antiguo. Filtros: `kind` (`registered` o `guest`), `key` y `cardCode` exactos, `page` y `pageSize`.
+
+**La clave de un invitado es su correo y el `CardCode` de un cliente nuevo contiene su RUT**, así que por defecto se devuelven ocultos (`email:[correo]`, `C[RUT]`, con `personalDataHidden: true`). Verlos completos (`includePersonalData=true`) o buscar por `key` o `cardCode` exige una clave de operación; con una de lectura responde 403.
+
+### `DELETE /admin/mappings/products?sku=…` · `DELETE /admin/mappings/customers?key=…`
+
+Elimina un mapeo (clave de operación). Responde 204, o 404 si no había. El producto se vuelve a resolver la próxima vez que llegue un pedido con ese SKU (se busca el SKU como `ItemCode` en SAP); el cliente, la próxima vez que compre. Queda en la auditoría (la clave de un invitado, con el correo oculto).
+
+## Auditoría
+
+### `GET /admin/audit`
+
+Las acciones manuales hechas desde el panel, de la más reciente a la más antigua: reintentar jobs (una entrada por job), disparar la sincronización de inventario, cerrar el circuito y eliminar mapeos. Filtros: `action` (`job.retry`, `inventory.sync`, `circuit.close`, `mapping.delete_product`, `mapping.delete_customer`), `keyFingerprint`, `from` y `to` (ISO 8601), `page` y `pageSize` (hasta 100).
+
+```json
+{
+  "items": [
+    {
+      "id": "019a3b1c-7e52-7a41-9f0d-2b6c5e8a1d33",
+      "occurredAt": "2026-10-28T14:05:02+00:00",
+      "action": "circuit.close",
+      "target": "sap",
+      "keyFingerprint": "3f9a2c1e",
+      "role": "operate",
+      "outcome": "closed"
+    }
+  ],
+  "page": 1,
+  "pageSize": 20,
+  "totalItems": 1,
+  "totalPages": 1
+}
+```
+
+`keyFingerprint` son los 8 primeros caracteres hexadecimales del SHA-256 de la clave que se usó: sirve para saber **cuál** clave actuó sin revelarla. El registro es **de solo inserción**: no hay endpoints para modificarlo ni borrarlo, el puerto de la aplicación no tiene esas operaciones y un disparador de PostgreSQL rechaza `UPDATE`, `DELETE` y `TRUNCATE`.
+
 ## Qué mirar cuando algo falla
 
-1. `GET /admin/metrics`: ¿hay jobs en `failed` o `dead_letter`? ¿crece `oldestPending`?
+1. `GET /admin/metrics`: ¿hay jobs en `failed` o `dead_letter`? ¿crece `oldestPending`? ¿algún circuito en `circuits` no está `closed`? Si SAP está caído, los jobs esperan sin gastar intentos hasta que el circuito se cierre.
 2. `GET /admin/jobs?status=failed,dead_letter,retrying`: ¿qué `lastError.code` se repite? Los códigos están en [flujo de pedidos](flujo-de-pedidos.md#códigos-de-error-de-un-job).
 3. `GET /admin/jobs/{id}`: el historial de intentos dice cuándo y por qué falló cada vez.
 4. En Seq, `JobId = '<id>'` muestra los logs de ese job; `InventoryRunId = '<id>'`, los de una sincronización de inventario.
