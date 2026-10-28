@@ -17,6 +17,8 @@ if [ -n "$host_ipv4" ]; then
   export TESTCONTAINERS_HOST_OVERRIDE="$host_ipv4"
 fi
 
+export ERPSYNC_TESTS_CONTAINER_NETWORK=1 # ver test-container.sh
+
 dotnet restore > /dev/null || exit 1
 dotnet build -c Release --no-restore 2>&1 | tail -3
 
