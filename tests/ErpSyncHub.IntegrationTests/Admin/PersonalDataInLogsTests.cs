@@ -121,10 +121,11 @@ public class PersonalDataInLogsTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task El_error_de_SAP_que_repite_el_codigo_del_cliente_no_filtra_el_RUT_ni_a_los_logs_ni_al_job()
+    public async Task Un_mapeo_de_cliente_obsoleto_se_recupera_solo_sin_filtrar_el_RUT_ni_a_los_logs_ni_al_job()
     {
         // El hub recuerda que el cliente 4521 es C18765432-7, pero ese cliente ya no existe en SAP: SAP responde "Business partner
-        // 'C18765432-7' does not exist", y el código de un cliente nuevo se deriva de su RUT.
+        // 'C18765432-7' does not exist" (el código de un cliente nuevo se deriva de su RUT). El hub elimina el mapeo, vuelve a resolver
+        // el cliente en el mismo intento y la orden se crea; ni la advertencia ni nada de eso deja el RUT en los logs.
         var (host, sink, sap) = await StartAsync(seed: async connectionString =>
         {
             await using var connection = new Npgsql.NpgsqlConnection(connectionString);
@@ -138,13 +139,11 @@ public class PersonalDataInLogsTests(PostgresFixture postgres)
         await using var __ = host;
 
         await host.PostSignedAsync(Order);
-        await host.WaitUntilAsync("SELECT bool_and(status = 'failed') FROM sync_jobs", "que el job falle");
+        await host.WaitUntilAsync("SELECT bool_and(status = 'succeeded') FROM sync_jobs", "que el job se recupere");
         await ReadPanelAsync(host);
 
-        (await host.ScalarAsync<string>("SELECT last_error_code FROM sync_jobs")).ShouldBe("sap.rejected");
-        var stored = await host.ScalarAsync<string>("SELECT last_error_message FROM sync_jobs");
-        stored.ShouldNotBeNull().ShouldContain("does not exist"); // el motivo se conserva
-        stored.ShouldNotContain("18765432");
+        (await host.ScalarAsync<long>("SELECT attempt_count FROM sync_jobs")).ShouldBe(1); // en el mismo intento, sin gastar otro
+        sink.Events.ShouldContain(logEvent => logEvent.Level == LogEventLevel.Warning && logEvent.RenderMessage().Contains("mapeos", StringComparison.Ordinal));
         AssertNoPersonalData(sink);
     }
 

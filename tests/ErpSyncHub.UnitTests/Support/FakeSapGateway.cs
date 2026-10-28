@@ -129,7 +129,30 @@ internal sealed class FakeSapGateway : ISapGateway
             nameof(FindOrderByReferenceAsync),
             () => Orders.FirstOrDefault(order => order.Reference == reference).Created);
 
-    public Task<Result<SapOrderReference>> CreateOrderAsync(NewSapOrder order, CancellationToken cancellationToken) =>
+    /// <summary>Como el SAP real: rechaza una orden cuyo cliente o artículos no existen. Por defecto acepta cualquier orden.</summary>
+    public bool RejectUnknownReferences { get; set; }
+
+    public Task<Result<SapOrderReference>> CreateOrderAsync(NewSapOrder order, CancellationToken cancellationToken)
+    {
+        if (RejectUnknownReferences)
+        {
+            if (!Customers.Exists(customer => customer.CardCode == order.CardCode))
+            {
+                Calls.Add(nameof(CreateOrderAsync));
+                return Task.FromResult(Result.Failure<SapOrderReference>(ResultError.Rejected(SapErrors.Rejected, "SAP rechazó la operación (HTTP 400): el cliente no existe")));
+            }
+
+            if (order.Lines.Any(line => !Items.ContainsKey(line.ItemCode)))
+            {
+                Calls.Add(nameof(CreateOrderAsync));
+                return Task.FromResult(Result.Failure<SapOrderReference>(ResultError.Rejected(SapErrors.Rejected, "SAP rechazó la operación (HTTP 400): un artículo no existe")));
+            }
+        }
+
+        return CreateOrderCoreAsync(order);
+    }
+
+    private Task<Result<SapOrderReference>> CreateOrderCoreAsync(NewSapOrder order) =>
         Run(
             nameof(CreateOrderAsync),
             () =>

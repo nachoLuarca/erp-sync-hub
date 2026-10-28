@@ -43,6 +43,34 @@ public class MappingStoreTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Eliminar_un_mapeo_de_producto_lo_borra_y_avisa_si_no_existia()
+    {
+        await using var host = await StoreHost.StartAsync(postgres);
+        await host.UseAsync(store => store.SaveProductMappingAsync("TAL-650", "A00001", CancellationToken.None));
+        await host.UseAsync(store => store.SaveProductMappingAsync("TAL-700", "A00002", CancellationToken.None));
+
+        (await host.UseAsync(store => store.DeleteProductMappingAsync(" TAL-650 ", CancellationToken.None))).ShouldBeTrue();
+        (await host.UseAsync(store => store.DeleteProductMappingAsync("TAL-650", CancellationToken.None))).ShouldBeFalse();
+
+        (await host.UseAsync(store => store.FindItemCodeAsync("TAL-650", CancellationToken.None))).ShouldBeNull();
+        (await host.UseAsync(store => store.FindItemCodeAsync("TAL-700", CancellationToken.None))).ShouldBe("A00002");
+    }
+
+    [Fact]
+    public async Task Eliminar_un_mapeo_de_cliente_lo_borra_y_avisa_si_no_existia()
+    {
+        await using var host = await StoreHost.StartAsync(postgres);
+        await host.UseAsync(store => store.SaveCustomerMappingAsync("customer:1", "C1", CancellationToken.None));
+        await host.UseAsync(store => store.SaveCustomerMappingAsync("customer:2", "C2", CancellationToken.None));
+
+        (await host.UseAsync(store => store.DeleteCustomerMappingAsync("customer:1", CancellationToken.None))).ShouldBeTrue();
+        (await host.UseAsync(store => store.DeleteCustomerMappingAsync("customer:1", CancellationToken.None))).ShouldBeFalse();
+
+        (await host.UseAsync(store => store.FindCardCodeAsync("customer:1", CancellationToken.None))).ShouldBeNull();
+        (await host.UseAsync(store => store.FindCardCodeAsync("customer:2", CancellationToken.None))).ShouldBe("C2");
+    }
+
+    [Fact]
     public async Task Guardar_dos_veces_el_mismo_mapeo_no_falla_y_no_pisa_el_primero()
     {
         await using var host = await StoreHost.StartAsync(postgres);

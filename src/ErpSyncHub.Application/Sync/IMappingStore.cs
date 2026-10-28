@@ -26,4 +26,13 @@ public interface IMappingStore
 
     /// <summary>Guarda el mapeo del cliente si aún no tiene uno.</summary>
     Task SaveCustomerMappingAsync(string customerKey, string cardCode, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Elimina el mapeo del producto, por ejemplo porque el artículo ya no existe en SAP. Devuelve <see langword="false"/> si no había
+    /// ninguno (otro worker puede haberlo eliminado antes).
+    /// </summary>
+    Task<bool> DeleteProductMappingAsync(string sku, CancellationToken cancellationToken);
+
+    /// <summary>Elimina el mapeo del cliente, por ejemplo porque su <c>CardCode</c> ya no existe en SAP. Devuelve <see langword="false"/> si no había ninguno.</summary>
+    Task<bool> DeleteCustomerMappingAsync(string customerKey, CancellationToken cancellationToken);
 }
