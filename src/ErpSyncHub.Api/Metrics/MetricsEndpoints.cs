@@ -1,7 +1,9 @@
 using ErpSyncHub.Api.Inventory;
 using ErpSyncHub.Api.Jobs;
+using ErpSyncHub.Api.Resilience;
 using ErpSyncHub.Application.Inventory;
 using ErpSyncHub.Application.Jobs;
+using ErpSyncHub.Application.Resilience;
 
 namespace ErpSyncHub.Api.Metrics;
 
@@ -17,7 +19,7 @@ internal static class MetricsEndpoints
             .WithDescription(
                 "jobs.byStatus incluye todos los estados, también los que tienen cero. oldestPending es el job pendiente más antiguo: " +
                 "una antigüedad que crece indica que los workers no dan abasto o están detenidos. nextRetryAt es cuándo toca el próximo " +
-                "reintento automático. inventorySync trae la última ejecución, sea cual sea su resultado, y la última sin errores.")
+                "reintento automático. circuits trae el estado de los circuit breakers (closed, open o half_open). inventorySync trae la última ejecución, sea cual sea su resultado, y la última sin errores.")
             .Produces<MetricsResponse>()
             .ProducesProblem(StatusCodes.Status401Unauthorized);
     }
@@ -25,6 +27,7 @@ internal static class MetricsEndpoints
     private static async Task<IResult> GetAsync(
         IJobAdmin jobs,
         IInventorySyncRunStore inventoryRuns,
+        CircuitBreakerService circuit,
         TimeProvider time,
         CancellationToken cancellationToken)
     {
@@ -44,11 +47,16 @@ internal static class MetricsEndpoints
                 metrics.NextRetryAt),
             new InventoryMetricsResponse(
                 last is null ? null : InventorySyncRunResponse.From(last),
-                lastSucceeded is null ? null : InventorySyncRunResponse.From(lastSucceeded))));
+                lastSucceeded is null ? null : InventorySyncRunResponse.From(lastSucceeded)),
+            await CircuitBreakerEndpoints.ReadAllAsync(circuit, cancellationToken)));
     }
 }
 
-internal sealed record MetricsResponse(DateTimeOffset GeneratedAt, JobMetricsResponse Jobs, InventoryMetricsResponse InventorySync);
+internal sealed record MetricsResponse(
+    DateTimeOffset GeneratedAt,
+    JobMetricsResponse Jobs,
+    InventoryMetricsResponse InventorySync,
+    IReadOnlyList<CircuitBreakerResponse> Circuits);
 
 internal sealed record JobMetricsResponse(
     int Total,

@@ -20,6 +20,7 @@ internal static class HealthResponseWriter
                 {
                     status = entry.Value.Status.ToString(),
                     description = entry.Value.Description,
+                    data = entry.Value.Data.Count == 0 ? null : entry.Value.Data,
                     durationMs = (long)entry.Value.Duration.TotalMilliseconds,
                 }),
         };

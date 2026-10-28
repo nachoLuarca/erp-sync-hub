@@ -6,6 +6,7 @@ using ErpSyncHub.Api.Logging;
 using ErpSyncHub.Api.Mappings;
 using ErpSyncHub.Api.Metrics;
 using ErpSyncHub.Api.Problems;
+using ErpSyncHub.Api.Resilience;
 using ErpSyncHub.Api.Sync;
 using ErpSyncHub.Api.Webhooks;
 using ErpSyncHub.Application;
@@ -124,6 +125,7 @@ admin.MapJobAdmin();
 admin.MapMetrics();
 admin.MapAdminAudit();
 admin.MapMappingAdmin();
+admin.MapCircuitBreakers();
 
 app.Run();
 
