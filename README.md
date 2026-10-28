@@ -251,7 +251,7 @@ En CI (GitHub Actions) no hace falta nada de esto: el runner ya tiene Docker y l
 | 2 | Webhook con firma HMAC-SHA256, tabla `sync_jobs`, worker con cola en PostgreSQL | v0.3.0 | ✅ Completa |
 | 3 | Sincronización periódica de stock y precios SAP → WooCommerce | v0.4.0 | ✅ Completa |
 | 4 | Backoff, dead letter, panel, reintento manual, simulación de fallas en el mock | v0.5.0 | ✅ Completa |
-| — | Endurecimiento: circuit breaker de SAP, mapeos obsoletos, roles del panel con auditoría, redacción contextual de datos personales | — | ✅ Completa |
+| — | Endurecimiento: circuit breaker de SAP, mapeos obsoletos, roles del panel con auditoría, redacción contextual de datos personales | v0.6.0 | ✅ Completa |
 | 5 | Despliegue, diagrama final, NuGet de `SapB1.Client`, release automatizado | v1.0.0 | ⏳ Pendiente |
 
 ## Documentación
