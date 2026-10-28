@@ -39,6 +39,7 @@ public sealed partial class SyncJobRunner(
     OrderSyncService orders,
     IJobQueue queue,
     RetryPolicy retry,
+    ExternalMessageSanitizer messages,
     ILogger<SyncJobRunner> logger)
 {
     /// <summary>Tiempo que se concede a escribir el resultado en la base de datos, aunque el servicio se esté apagando.</summary>
@@ -111,7 +112,7 @@ public sealed partial class SyncJobRunner(
         catch (Exception exception)
         {
             LogUnexpected(exception);
-            failure = ResultError.Unexpected(JobErrors.Unexpected, $"Error inesperado ({exception.GetType().Name}): {PersonalDataRedactor.RedactRequired(exception.Message)}");
+            failure = ResultError.Unexpected(JobErrors.Unexpected, $"Error inesperado ({exception.GetType().Name}): {messages.Sanitize(exception.Message)}");
         }
 
         await CloseAsync(claim, outcome, failure);

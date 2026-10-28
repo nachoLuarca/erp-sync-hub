@@ -1,3 +1,4 @@
+using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Jobs;
 using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Application.Sync;
@@ -186,6 +187,7 @@ public class SyncJobRunnerRetryTests
             new OrderSyncService(sap ?? _sap, new FakeMappingStore(), new OrderSyncOptions(), new FakeLogger<OrderSyncService>()),
             _queue,
             new RetryPolicy(new JobRetryOptions { MaxAttempts = maxAttempts }, () => 1.0),
+            new ExternalMessageSanitizer(new ExternalMessageOptions()),
             _logger);
 
     private IEnumerable<string> Messages(LogLevel level) =>

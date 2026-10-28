@@ -15,7 +15,7 @@ namespace ErpSyncHub.Infrastructure.Store;
 /// los actualiza con el endpoint <c>products/batch</c>, en lotes que respetan el límite de la tienda. Traduce los fallos a
 /// <see cref="Result"/>: credenciales rechazadas y errores 4xx son definitivos; 5xx, red y tiempos agotados son pasajeros.
 /// </summary>
-internal sealed class WooCommerceGateway(HttpClient http, IOptions<WooCommerceOptions> options) : IStoreGateway
+internal sealed class WooCommerceGateway(HttpClient http, IOptions<WooCommerceOptions> options, ExternalMessageSanitizer messages) : IStoreGateway
 {
     private const string ProductsPath = "wp-json/wc/v3/products";
     private const int SearchPageSize = 100;
@@ -146,7 +146,7 @@ internal sealed class WooCommerceGateway(HttpClient http, IOptions<WooCommerceOp
         return new JsonObject { ["update"] = update };
     }
 
-    private static IEnumerable<StoreUpdateOutcome> ReadBatchResults(StoreProductUpdate[] batch, JsonNode? response)
+    private IEnumerable<StoreUpdateOutcome> ReadBatchResults(StoreProductUpdate[] batch, JsonNode? response)
     {
         var results = (response as JsonObject)?["update"] as JsonArray;
         var byId = new Dictionary<long, JsonObject>();
@@ -177,10 +177,10 @@ internal sealed class WooCommerceGateway(HttpClient http, IOptions<WooCommerceOp
         }
     }
 
-    private static ResultError TranslateItemError(JsonObject error)
+    private ResultError TranslateItemError(JsonObject error)
     {
         var code = error["code"]?.GetValue<string>() ?? "desconocido";
-        var message = PersonalDataRedactor.RedactRequired(error["message"]?.GetValue<string>() ?? "Sin detalle.");
+        var message = messages.Sanitize(error["message"]?.GetValue<string>() ?? "Sin detalle.");
         var status = error["data"]?["status"]?.GetValue<int>() ?? 400;
         var detail = $"La tienda rechazó el producto ({code}): {message}";
 
@@ -220,7 +220,7 @@ internal sealed class WooCommerceGateway(HttpClient http, IOptions<WooCommerceOp
         catch (Exception exception) when (exception is HttpRequestException or IOException)
         {
             // Un IOException suelto es una conexión cortada a mitad de la respuesta: igual de pasajero que no poder conectar.
-            var detail = string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : PersonalDataRedactor.RedactRequired(exception.Message);
+            var detail = string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : messages.Sanitize(exception.Message);
             return Result.Failure<JsonNode?>(ResultError.Transient(StoreErrors.Unreachable, $"No se pudo conectar con la tienda: {detail}"));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -230,7 +230,7 @@ internal sealed class WooCommerceGateway(HttpClient http, IOptions<WooCommerceOp
         }
     }
 
-    private static ResultError TranslateHttpError(HttpStatusCode status, string body)
+    private ResultError TranslateHttpError(HttpStatusCode status, string body)
     {
         var detail = DescribeBody(body);
         var number = (int)status;
@@ -250,13 +250,13 @@ internal sealed class WooCommerceGateway(HttpClient http, IOptions<WooCommerceOp
     }
 
     /// <summary>Extrae el mensaje de error de WooCommerce (<c>{"code":..,"message":..}</c>) si el cuerpo lo trae.</summary>
-    private static string DescribeBody(string body)
+    private string DescribeBody(string body)
     {
         try
         {
             if (JsonNode.Parse(body) is JsonObject error && error["message"]?.GetValue<string>() is { Length: > 0 } message)
             {
-                return $": {PersonalDataRedactor.RedactRequired(message)}";
+                return $": {messages.Sanitize(message)}";
             }
         }
         catch (JsonException)

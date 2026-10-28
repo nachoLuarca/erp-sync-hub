@@ -93,6 +93,17 @@ public class SapGatewayErrorMappingTests
         result.Error.Message.ShouldContain($"HTTP {(int)status}");
     }
 
+    [Fact]
+    public async Task Un_mensaje_enorme_de_SAP_se_recorta_al_largo_maximo()
+    {
+        _items.GetAsync("A1", Arg.Any<CancellationToken>()).ThrowsAsync(new SapB1ApiException(HttpStatusCode.BadRequest, -10, new string('x', 20_000)));
+
+        var result = await Gateway().GetItemAsync("A1", CancellationToken.None);
+
+        result.Error!.Message.Length.ShouldBeLessThan(500); // el mensaje de SAP queda en 300 caracteres más el encabezado
+        result.Error.Message.ShouldEndWith("…");
+    }
+
     [Theory]
     [InlineData("Business partner 'C18765432-7' does not exist", "Business partner 'C[RUT]' does not exist")]
     [InlineData("Duplicate FederalTaxID 18.765.432-7 for valentina@example.com", "Duplicate FederalTaxID [RUT] for [correo]")]

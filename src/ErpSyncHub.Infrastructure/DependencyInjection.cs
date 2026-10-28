@@ -1,4 +1,5 @@
 using ErpSyncHub.Application.Admin;
+using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Inventory;
 using ErpSyncHub.Application.Jobs;
 using ErpSyncHub.Application.Sap;
@@ -71,6 +72,7 @@ public static class DependencyInjection
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
+        services.AddExternalMessages(configuration);
         services.AddOptions<WooCommerceOptions>().Bind(configuration.GetSection(WooCommerceOptions.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<WooCommerceOptions>, WooCommerceOptionsValidator>());
 
@@ -103,10 +105,31 @@ public static class DependencyInjection
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
+        services.AddExternalMessages(configuration);
         services.AddSapB1Client(configuration);
         services.AddOptions<SapGatewayOptions>().Bind(configuration.GetSection(SapB1Options.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SapGatewayOptions>, SapGatewayOptionsValidator>());
         services.AddScoped<ISapGateway, SapGateway>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registra el recorte y la limpieza de los mensajes de los sistemas externos (sección <c>Messages</c>). Los dos adaptadores lo
+    /// necesitan y cada uno puede registrarse por separado, así que es seguro llamarlo más de una vez.
+    /// </summary>
+    private static IServiceCollection AddExternalMessages(this IServiceCollection services, IConfiguration configuration)
+    {
+        if (services.Any(descriptor => descriptor.ServiceType == typeof(ExternalMessageSanitizer)))
+        {
+            return services;
+        }
+
+        services.AddOptions<ExternalMessageOptions>()
+            .Bind(configuration.GetSection(ExternalMessageOptions.SectionName))
+            .ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<ExternalMessageOptions>, ExternalMessageOptionsValidator>());
+        services.AddSingleton(serviceProvider => serviceProvider.GetRequiredService<IOptions<ExternalMessageOptions>>().Value);
+        services.AddSingleton<ExternalMessageSanitizer>();
         return services;
     }
 }

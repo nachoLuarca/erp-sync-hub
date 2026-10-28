@@ -309,6 +309,21 @@ public sealed class WooCommerceGatewayTests : IDisposable
     }
 
     [Fact]
+    public async Task Un_mensaje_enorme_de_la_tienda_se_recorta_al_largo_maximo()
+    {
+        _store.RespondNextWith(
+            HttpStatusCode.OK,
+            "{\"update\":[{\"id\":1,\"error\":{\"code\":\"invalid\",\"message\":\"" + new string('x', 20_000) + "\",\"data\":{\"status\":400}}}]}");
+        await using var provider = Provider();
+
+        var result = await Gateway(provider).UpdateProductsAsync([new StoreProductUpdate(1, "A", 1, null)], CancellationToken.None);
+
+        var message = result.Value.Single().Error!.Message;
+        message.Length.ShouldBeLessThan(500);
+        message.ShouldEndWith("…");
+    }
+
+    [Fact]
     public async Task El_mensaje_de_error_de_la_tienda_no_deja_pasar_el_correo_del_cliente()
     {
         _store.RespondNextWith(

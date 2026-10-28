@@ -1,3 +1,4 @@
+using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Jobs;
 using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Application.Sync;
@@ -216,7 +217,7 @@ public class SyncJobRunnerTests
     }
 
     private SyncJobRunner Runner(ISapGateway sap) =>
-        new(new OrderSyncService(sap, _mappings, new OrderSyncOptions(), new FakeLogger<OrderSyncService>()), _queue, Retry(), _logger);
+        new(new OrderSyncService(sap, _mappings, new OrderSyncOptions(), new FakeLogger<OrderSyncService>()), _queue, Retry(), new ExternalMessageSanitizer(new ExternalMessageOptions()), _logger);
 
     private static RetryPolicy Retry(int maxAttempts = 12) =>
         new(new JobRetryOptions { MaxAttempts = maxAttempts }, () => 1.0);
