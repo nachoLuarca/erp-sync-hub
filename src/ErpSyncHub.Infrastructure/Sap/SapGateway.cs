@@ -15,7 +15,7 @@ namespace ErpSyncHub.Infrastructure.Sap;
 /// <see cref="Result"/> (ADR 0006): un rechazo de SAP es definitivo, mientras que un error del servidor, un problema de
 /// sesión, de red o un tiempo de espera agotado son pasajeros y la Fase 4 los reintentará.
 /// </summary>
-internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> options) : ISapGateway
+internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> options, ExternalMessageSanitizer messages) : ISapGateway
 {
     public Task<Result<SapCustomer?>> FindCustomerByTaxIdAsync(Rut taxId, CancellationToken cancellationToken)
     {
@@ -210,7 +210,7 @@ internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> o
     /// Ejecuta una operación contra SAP y traduce sus excepciones. La cancelación solicitada por quien llama no se
     /// traduce: se propaga, para que un apagado ordenado no se confunda con un fallo de SAP.
     /// </summary>
-    private static async Task<Result<T>> ExecuteAsync<T>(
+    private async Task<Result<T>> ExecuteAsync<T>(
         Func<Task<T>> operation,
         CancellationToken cancellationToken)
     {
@@ -221,6 +221,12 @@ internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> o
         catch (SapB1ApiException exception)
         {
             return Result.Failure<T>(Translate(exception));
+        }
+        catch (SapB1SessionException exception) when (exception.SapErrorCode == SapB1ErrorCodes.InvalidCredentials)
+        {
+            return Result.Failure<T>(ResultError.Transient(
+                SapErrors.InvalidCredentials,
+                $"SAP rechazó las credenciales (SAP__UserName, SAP__Password, SAP__CompanyDb){Describe(exception.StatusCode, exception.SapErrorCode, exception.SapErrorMessage)}"));
         }
         catch (SapB1SessionException exception)
         {
@@ -242,10 +248,10 @@ internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> o
         }
     }
 
-    private static string Describe(Exception exception) =>
-        string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : PersonalDataRedactor.RedactRequired(exception.Message);
+    private string Describe(Exception exception) =>
+        string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : messages.Sanitize(exception.Message);
 
-    private static ResultError Translate(SapB1ApiException exception)
+    private ResultError Translate(SapB1ApiException exception)
     {
         var detail = Describe(exception.StatusCode, exception.SapErrorCode, exception.SapErrorMessage);
         var status = (int)exception.StatusCode;
@@ -259,7 +265,7 @@ internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> o
             : ResultError.Rejected(SapErrors.Rejected, $"SAP rechazó la operación{detail}");
     }
 
-    private static string Describe(HttpStatusCode? status, int? code, string? message)
+    private string Describe(HttpStatusCode? status, int? code, string? message)
     {
         var parts = new List<string>();
         if (status is { } httpStatus)
@@ -273,8 +279,8 @@ internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> o
         }
 
         var prefix = parts.Count > 0 ? $" ({string.Join(", ", parts)})" : string.Empty;
-        // SAP escribe sus errores como quiere y puede repetir datos del cliente (su RUT, su correo): se ocultan antes de guardarlos y registrarlos.
-        return string.IsNullOrWhiteSpace(message) ? $"{prefix}." : $"{prefix}: {PersonalDataRedactor.RedactRequired(message)}";
+        // SAP escribe sus errores como quiere y puede repetir datos del cliente (su RUT, su correo): se ocultan y se acotan antes de guardarlos y registrarlos.
+        return string.IsNullOrWhiteSpace(message) ? $"{prefix}." : $"{prefix}: {messages.Sanitize(message)}";
     }
 
     private static SapCustomer? ToCustomer(BusinessPartner? partner) =>

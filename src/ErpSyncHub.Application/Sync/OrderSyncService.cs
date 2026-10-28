@@ -1,4 +1,5 @@
 using System.Globalization;
+using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Jobs;
 using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Application.WooCommerce;
@@ -65,6 +66,10 @@ public sealed partial class OrderSyncService(
         }
 
         var order = parsed.Value;
+
+        // Desde aquí, cualquier mensaje de SAP o de la tienda que repita un dato de este pedido sale con el dato oculto.
+        using var personalData = PersonalDataScope.Begin(OrderPersonalData.Of(order, options.TaxIdMetaKey));
+
         var reference = $"{OrderSyncOptions.ReferencePrefix}{order.Id.ToString(CultureInfo.InvariantCulture)}";
 
         // Validaciones locales primero: no vale la pena llamar a SAP por un pedido que se sabe inválido.
@@ -88,24 +93,26 @@ public sealed partial class OrderSyncService(
             return Result.Success(new OrderSyncOutcome(found, AlreadyExisted: true));
         }
 
-        // 2. Productos. Antes que el cliente: un SKU inválido no debe dejar un cliente nuevo en SAP para un pedido que va a fallar.
-        var lines = await BuildLinesAsync(order, cancellationToken);
-        if (lines.IsFailure)
+        // 2 a 4. Productos, cliente y orden. Si SAP rechaza la orden y alguno de los mapeos guardados ya no existe en SAP (se borró
+        // el cliente o el artículo), se eliminan y se resuelve todo de nuevo, una sola vez dentro de este mismo intento.
+        var usage = new MappingUsage();
+        var created = await ResolveAndCreateAsync(order, reference, usage, cancellationToken);
+
+        if (created.IsFailure && created.Error!.Code == SapErrors.Rejected && usage.HasStoredMappings)
         {
-            return Result.Failure<OrderSyncOutcome>(lines.Error!);
+            var dropped = await DropStaleMappingsAsync(usage, cancellationToken);
+            if (dropped.IsFailure)
+            {
+                return Result.Failure<OrderSyncOutcome>(dropped.Error!);
+            }
+
+            if (dropped.Value.Any)
+            {
+                LogStaleMappingsDropped(order.Id, dropped.Value.Customers, string.Join(", ", dropped.Value.Skus));
+                created = await ResolveAndCreateAsync(order, reference, new MappingUsage(), cancellationToken);
+            }
         }
 
-        // 3. Cliente.
-        var customer = await ResolveCustomerAsync(order, cancellationToken);
-        if (customer.IsFailure)
-        {
-            return Result.Failure<OrderSyncOutcome>(customer.Error!);
-        }
-
-        // 4. Orden.
-        var created = await sap.CreateOrderAsync(
-            new NewSapOrder(customer.Value, reference, BuildComments(order), ToStoreDate(order), lines.Value),
-            cancellationToken);
         if (created.IsFailure)
         {
             return Result.Failure<OrderSyncOutcome>(created.Error!);
@@ -114,6 +121,86 @@ public sealed partial class OrderSyncService(
         LogOrderCreated(order.Id, created.Value.DocEntry, created.Value.DocNum);
         WarnIfTotalsDiffer(order, job.StoreTotal, created.Value.Total);
         return Result.Success(new OrderSyncOutcome(created.Value, AlreadyExisted: false));
+    }
+
+    /// <summary>Resuelve los productos y el cliente, y crea la orden. Anota en <paramref name="usage"/> los mapeos que salieron del almacén.</summary>
+    private async Task<Result<SapOrderReference>> ResolveAndCreateAsync(
+        WooCommerceOrder order,
+        string reference,
+        MappingUsage usage,
+        CancellationToken cancellationToken)
+    {
+        // Productos primero: un SKU inválido no debe dejar un cliente nuevo en SAP para un pedido que va a fallar.
+        var lines = await BuildLinesAsync(order, usage, cancellationToken);
+        if (lines.IsFailure)
+        {
+            return Result.Failure<SapOrderReference>(lines.Error!);
+        }
+
+        var customer = await ResolveCustomerAsync(order, usage, cancellationToken);
+        if (customer.IsFailure)
+        {
+            return Result.Failure<SapOrderReference>(customer.Error!);
+        }
+
+        return await sap.CreateOrderAsync(
+            new NewSapOrder(customer.Value, reference, BuildComments(order), ToStoreDate(order), lines.Value),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Comprueba en SAP los mapeos que se usaron y elimina los que apuntan a algo que ya no existe. No se confía en el texto del
+    /// error de SAP para saber cuál falló: se pregunta directamente por cada código. Un fallo de SAP al preguntar se devuelve tal cual.
+    /// </summary>
+    private async Task<Result<DroppedMappings>> DropStaleMappingsAsync(MappingUsage usage, CancellationToken cancellationToken)
+    {
+        var customers = 0;
+        var skus = new List<string>();
+
+        if (usage.StoredCustomer is { } stored)
+        {
+            var customer = await sap.GetCustomerAsync(stored.CardCode, cancellationToken);
+            if (customer.IsFailure)
+            {
+                return Result.Failure<DroppedMappings>(customer.Error!);
+            }
+
+            if (customer.Value is null && await mappings.DeleteCustomerMappingAsync(stored.Key, cancellationToken))
+            {
+                customers++;
+            }
+        }
+
+        foreach (var (sku, itemCode) in usage.StoredItems)
+        {
+            var item = await sap.GetItemAsync(itemCode, cancellationToken);
+            if (item.IsFailure)
+            {
+                return Result.Failure<DroppedMappings>(item.Error!);
+            }
+
+            if (item.Value is null && await mappings.DeleteProductMappingAsync(sku, cancellationToken))
+            {
+                skus.Add(sku);
+            }
+        }
+
+        return Result.Success(new DroppedMappings(customers, skus));
+    }
+
+    /// <summary>Los mapeos guardados que usó un intento de resolver el pedido (los que se resolvieron en SAP en ese momento no cuentan).</summary>
+    private sealed class MappingUsage
+    {
+        public (string Key, string CardCode)? StoredCustomer { get; set; }
+
+        public Dictionary<string, string> StoredItems { get; } = new(StringComparer.Ordinal);
+
+        public bool HasStoredMappings => StoredCustomer is not null || StoredItems.Count > 0;
+    }
+
+    private sealed record DroppedMappings(int Customers, IReadOnlyList<string> Skus)
+    {
+        public bool Any => Customers > 0 || Skus.Count > 0;
     }
 
     private static ResultError? ValidateLocally(WooCommerceOrder order)
@@ -143,7 +230,7 @@ public sealed partial class OrderSyncService(
         return null;
     }
 
-    private async Task<Result<string>> ResolveCustomerAsync(WooCommerceOrder order, CancellationToken cancellationToken)
+    private async Task<Result<string>> ResolveCustomerAsync(WooCommerceOrder order, MappingUsage usage, CancellationToken cancellationToken)
     {
         var email = NullIfBlank(order.Billing.Email) is { } rawEmail ? CustomerKey.NormalizeEmail(rawEmail) : null;
 
@@ -161,6 +248,7 @@ public sealed partial class OrderSyncService(
         var mapped = await mappings.FindCardCodeAsync(key, cancellationToken);
         if (mapped is not null)
         {
+            usage.StoredCustomer = (key, mapped);
             return Result.Success(mapped);
         }
 
@@ -279,7 +367,7 @@ public sealed partial class OrderSyncService(
             NullIfBlank(address.Postcode) is { } postcode ? Truncate(postcode, MaxPostalCodeLength) : null);
     }
 
-    private async Task<Result<IReadOnlyList<NewSapOrderLine>>> BuildLinesAsync(WooCommerceOrder order, CancellationToken cancellationToken)
+    private async Task<Result<IReadOnlyList<NewSapOrderLine>>> BuildLinesAsync(WooCommerceOrder order, MappingUsage usage, CancellationToken cancellationToken)
     {
         var itemCodes = new Dictionary<string, string>(StringComparer.Ordinal);
         var lines = new List<NewSapOrderLine>(order.LineItems.Count);
@@ -290,7 +378,7 @@ public sealed partial class OrderSyncService(
 
             if (!itemCodes.TryGetValue(sku, out var itemCode))
             {
-                var resolved = await ResolveItemCodeAsync(order, line, sku, cancellationToken);
+                var resolved = await ResolveItemCodeAsync(order, line, sku, usage, cancellationToken);
                 if (resolved.IsFailure)
                 {
                     return Result.Failure<IReadOnlyList<NewSapOrderLine>>(resolved.Error!);
@@ -313,11 +401,13 @@ public sealed partial class OrderSyncService(
         WooCommerceOrder order,
         WooCommerceLineItem line,
         string sku,
+        MappingUsage usage,
         CancellationToken cancellationToken)
     {
         var mapped = await mappings.FindItemCodeAsync(sku, cancellationToken);
         if (mapped is not null)
         {
+            usage.StoredItems[sku] = mapped;
             return Result.Success(mapped);
         }
 
@@ -390,6 +480,13 @@ public sealed partial class OrderSyncService(
     // Los logs no llevan datos personales: el CardCode de un cliente nuevo se deriva de su RUT, así que no se registra.
     [LoggerMessage(Level = LogLevel.Information, Message = "Cliente nuevo creado en SAP para el pedido {OrderId}")]
     private partial void LogCustomerCreated(long orderId);
+
+    // El CardCode no se registra (se deriva del RUT): solo cuántos clientes y qué SKU tenían el mapeo obsoleto.
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "SAP rechazó la orden del pedido {OrderId} y ya no existe lo que apuntaban sus mapeos guardados ({StaleCustomers} cliente(s), SKU: {StaleSkus}): " +
+                  "se eliminaron y se resuelven de nuevo, una sola vez en este intento")]
+    private partial void LogStaleMappingsDropped(long orderId, int staleCustomers, string staleSkus);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Orden {DocEntry} (nº {DocNum}) creada en SAP para el pedido {OrderId}")]
     private partial void LogOrderCreated(long orderId, int docEntry, int docNum);

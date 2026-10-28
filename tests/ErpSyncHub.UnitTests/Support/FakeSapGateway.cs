@@ -28,6 +28,9 @@ internal sealed class FakeSapGateway : ISapGateway
     /// <summary>Se ejecuta justo después de crear una orden; permite simular que algo ocurre en ese instante.</summary>
     public Action? AfterCreateOrder { get; set; }
 
+    /// <summary>Se ejecuta al recibir cada operación, con su nombre; permite observar el estado del servicio en ese instante.</summary>
+    public Action<string>? OnCall { get; set; }
+
     /// <summary>Último correo recibido en una búsqueda.</summary>
     public string? LastEmailSearched { get; private set; }
 
@@ -126,7 +129,30 @@ internal sealed class FakeSapGateway : ISapGateway
             nameof(FindOrderByReferenceAsync),
             () => Orders.FirstOrDefault(order => order.Reference == reference).Created);
 
-    public Task<Result<SapOrderReference>> CreateOrderAsync(NewSapOrder order, CancellationToken cancellationToken) =>
+    /// <summary>Como el SAP real: rechaza una orden cuyo cliente o artículos no existen. Por defecto acepta cualquier orden.</summary>
+    public bool RejectUnknownReferences { get; set; }
+
+    public Task<Result<SapOrderReference>> CreateOrderAsync(NewSapOrder order, CancellationToken cancellationToken)
+    {
+        if (RejectUnknownReferences)
+        {
+            if (!Customers.Exists(customer => customer.CardCode == order.CardCode))
+            {
+                Calls.Add(nameof(CreateOrderAsync));
+                return Task.FromResult(Result.Failure<SapOrderReference>(ResultError.Rejected(SapErrors.Rejected, "SAP rechazó la operación (HTTP 400): el cliente no existe")));
+            }
+
+            if (order.Lines.Any(line => !Items.ContainsKey(line.ItemCode)))
+            {
+                Calls.Add(nameof(CreateOrderAsync));
+                return Task.FromResult(Result.Failure<SapOrderReference>(ResultError.Rejected(SapErrors.Rejected, "SAP rechazó la operación (HTTP 400): un artículo no existe")));
+            }
+        }
+
+        return CreateOrderCoreAsync(order);
+    }
+
+    private Task<Result<SapOrderReference>> CreateOrderCoreAsync(NewSapOrder order) =>
         Run(
             nameof(CreateOrderAsync),
             () =>
@@ -142,6 +168,7 @@ internal sealed class FakeSapGateway : ISapGateway
     private Task<Result<T>> Run<T>(string operation, Func<T> action)
     {
         Calls.Add(operation);
+        OnCall?.Invoke(operation);
         return Task.FromResult(_failures.TryGetValue(operation, out var error)
             ? Result.Failure<T>(error)
             : Result.Success(action()));

@@ -88,4 +88,16 @@ internal sealed class MappingStore(ErpSyncHubDbContext context, TimeProvider tim
             """,
             cancellationToken);
     }
+
+    public async Task<bool> DeleteProductMappingAsync(string sku, CancellationToken cancellationToken)
+    {
+        var key = sku.Trim();
+        return await context.ProductMappings.Where(mapping => mapping.Sku == key).ExecuteDeleteAsync(cancellationToken) > 0;
+    }
+
+    public async Task<bool> DeleteCustomerMappingAsync(string customerKey, CancellationToken cancellationToken)
+    {
+        var key = customerKey.Trim();
+        return await context.CustomerMappings.Where(mapping => mapping.ExternalKey == key).ExecuteDeleteAsync(cancellationToken) > 0;
+    }
 }

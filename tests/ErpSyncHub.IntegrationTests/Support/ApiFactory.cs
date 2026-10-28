@@ -13,7 +13,11 @@ internal static class ApiFactory
     public const string WebhookSecret = "secreto-de-pruebas-del-webhook-0123456789";
 
     /// <summary>Clave del panel de las pruebas (la Api exige al menos 32 caracteres).</summary>
+    /// <summary>Clave de operación de las pruebas: puede todo lo del panel.</summary>
     public const string AdminApiKey = "clave-de-administracion-de-pruebas-0123456789";
+
+    /// <summary>Clave de lectura de las pruebas: consulta, pero no ejecuta acciones.</summary>
+    public const string ReadApiKey = "clave-de-lectura-del-panel-de-pruebas-0123";
 
     /// <param name="connectionString">Base de datos de la prueba.</param>
     /// <param name="migrateOnStartup">Aplica las migraciones al iniciar.</param>
@@ -25,7 +29,8 @@ internal static class ApiFactory
     /// consulta cada 50 ms para que las pruebas sean rápidas.
     /// </param>
     /// <param name="configure">Ajustes adicionales del host.</param>
-    /// <param name="adminApiKey">Clave(s) del panel, separadas por coma; <see langword="null"/> deja el panel sin configurar.</param>
+    /// <param name="adminApiKey">Clave(s) de operación del panel, separadas por coma; <see langword="null"/> no configura ninguna.</param>
+    /// <param name="readApiKey">Clave(s) de lectura del panel, separadas por coma; <see langword="null"/> no configura ninguna.</param>
     public static WebApplicationFactory<Program> Create(
         string connectionString,
         bool migrateOnStartup = false,
@@ -34,13 +39,15 @@ internal static class ApiFactory
         Func<HttpMessageHandler>? sapHandler = null,
         bool workerEnabled = false,
         Action<IWebHostBuilder>? configure = null,
-        string? adminApiKey = AdminApiKey) =>
+        string? adminApiKey = AdminApiKey,
+        string? readApiKey = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Database:ConnectionString", connectionString);
             builder.UseSetting("Database:MigrateOnStartup", migrateOnStartup ? "true" : "false");
             builder.UseSetting("Webhooks:WooCommerce:Secret", webhookSecret ?? string.Empty);
-            builder.UseSetting("Admin:ApiKey", adminApiKey ?? string.Empty);
+            builder.UseSetting("Admin:OperateApiKeys", adminApiKey ?? string.Empty);
+            builder.UseSetting("Admin:ReadApiKeys", readApiKey ?? string.Empty);
 
             // Credenciales ficticias del SAP simulado; sin mock, apunta a una dirección que nadie atiende.
             builder.UseSetting("SAP:BaseUrl", "http://localhost:9");

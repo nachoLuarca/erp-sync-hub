@@ -54,6 +54,12 @@ public interface ISapGateway
     Task<Result<SapOrderReference>> CreateOrderAsync(NewSapOrder order, CancellationToken cancellationToken);
 }
 
+/// <summary>La prueba liviana del circuit breaker de SAP: iniciar sesión y leer un artículo, sin pasar por el circuito.</summary>
+public interface ISapProbe
+{
+    Task<Resilience.CircuitProbeResult> ProbeAsync(CancellationToken cancellationToken);
+}
+
 /// <summary>Cliente existente en SAP.</summary>
 /// <param name="CardCode">Código del cliente.</param>
 /// <param name="CardName">Nombre o razón social.</param>
@@ -123,6 +129,12 @@ public static class SapErrors
 
     /// <summary>No se pudo iniciar sesión en SAP, o SAP siguió rechazando la sesión.</summary>
     public const string Session = "sap.session";
+
+    /// <summary>
+    /// SAP rechazó el usuario, la contraseña o la sociedad al iniciar sesión. Es pasajero (basta corregir la configuración para que
+    /// los jobs se completen) pero abre el circuit breaker de inmediato: reintentar con credenciales malas puede bloquear al usuario.
+    /// </summary>
+    public const string InvalidCredentials = "sap.invalid_credentials";
 
     /// <summary>No se pudo conectar con SAP.</summary>
     public const string Unreachable = "sap.unreachable";

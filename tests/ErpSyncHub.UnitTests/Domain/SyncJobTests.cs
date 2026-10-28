@@ -206,6 +206,46 @@ public class SyncJobTests
     }
 
     [Fact]
+    public void Defer_devuelve_el_job_a_pendiente_sin_gastar_el_intento_del_ciclo()
+    {
+        var job = ClaimedJob("worker-1");
+        job.CycleAttempts.ShouldBe(1);
+
+        var result = job.Defer("worker-1", Now + TimeSpan.FromSeconds(3));
+
+        result.IsSuccess.ShouldBeTrue();
+        job.Status.ShouldBe(JobStatus.Pending);
+        job.CycleAttempts.ShouldBe(0); // el presupuesto de intentos vuelve a donde estaba
+        job.AttemptCount.ShouldBe(1); // el historial no retrocede: el intento queda registrado
+        job.LockedBy.ShouldBeNull();
+        job.LockedUntil.ShouldBeNull();
+        job.IsClaimable(Now).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Un_job_diferido_se_toma_de_nuevo_como_primer_intento_del_ciclo()
+    {
+        var job = ClaimedJob("worker-1");
+        job.Defer("worker-1", Now);
+
+        var second = job.Claim("worker-2", Now, Lease);
+
+        second.Value.Number.ShouldBe(2);
+        job.AttemptCount.ShouldBe(2);
+        job.CycleAttempts.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Defer_solo_lo_puede_hacer_el_worker_dueno_del_lease()
+    {
+        var job = ClaimedJob("worker-1");
+
+        job.Defer("worker-2", Now).Error!.Code.ShouldBe("job.lost_lease");
+        job.Status.ShouldBe(JobStatus.Processing);
+        job.CycleAttempts.ShouldBe(1);
+    }
+
+    [Fact]
     public void Un_job_liberado_se_puede_tomar_de_nuevo_con_un_intento_nuevo()
     {
         var job = ClaimedJob("worker-1");

@@ -217,7 +217,7 @@ public class SyncWorkerTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Con_credenciales_de_SAP_incorrectas_el_job_queda_esperando_un_reintento_con_un_error_de_sesion()
+    public async Task Con_credenciales_de_SAP_incorrectas_el_job_queda_esperando_un_reintento_con_un_error_de_credenciales()
     {
         using var sap = new SapMockHost();
         await using var host = await WebhookHost.StartAsync(
@@ -229,7 +229,7 @@ public class SyncWorkerTests(PostgresFixture postgres)
         await host.PostSignedAsync(ProcessingOrder);
         await host.WaitUntilAsync("SELECT bool_and(status = 'retrying') FROM sync_jobs", "que el job quede esperando un reintento");
 
-        (await host.ScalarAsync<string>("SELECT last_error_code FROM sync_jobs")).ShouldBe("sap.session");
+        (await host.ScalarAsync<string>("SELECT last_error_code FROM sync_jobs")).ShouldBe("sap.invalid_credentials");
         (await host.ScalarAsync<string>("SELECT last_error_message FROM sync_jobs")).ShouldNotBeNull().ShouldContain("-304");
     }
 

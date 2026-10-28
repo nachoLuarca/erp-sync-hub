@@ -56,6 +56,9 @@ internal sealed class QueueHarness : IDisposable
     public Task<Result> FailAsync(ClaimedJob claim, ResultError error, RetryDecision? decision = null) =>
         UseAsync(queue => queue.FailAsync(claim, error, decision ?? new RetryDecision(RetryAction.Fail, TimeSpan.Zero), CancellationToken.None));
 
+    public Task<Result> DeferAsync(ClaimedJob claim) =>
+        UseAsync(queue => queue.DeferAsync(claim, CancellationToken.None));
+
     public Task<Result> ReleaseAsync(ClaimedJob claim) =>
         UseAsync(queue => queue.ReleaseAsync(claim, CancellationToken.None));
 

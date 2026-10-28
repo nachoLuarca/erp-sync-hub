@@ -14,6 +14,9 @@
 .PARAMETER SkipFormat
     Omite la verificación de "dotnet format".
 
+.PARAMETER Cpus
+    Limita la CPU del contenedor (por ejemplo 2, como un runner de GitHub). Sin valor, usa toda la disponible.
+
 .EXAMPLE
     ./scripts/test.ps1
 
@@ -23,7 +26,8 @@
 [CmdletBinding()]
 param(
     [string]$Filter,
-    [switch]$SkipFormat
+    [switch]$SkipFormat,
+    [double]$Cpus
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,7 +45,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $dockerArgs = @(
-    'run', '--rm',
+    'run', '--rm'
+)
+if ($Cpus -gt 0) {
+    $dockerArgs += @('--cpus', "$Cpus")
+}
+$dockerArgs += @(
     '-v', "${repo}:/src:ro",
     '-v', 'erp-sync-hub-nuget:/root/.nuget/packages',
     # Testcontainers levanta sus contenedores en el Docker del host (hermanos de este) y los alcanza por el puerto publicado.

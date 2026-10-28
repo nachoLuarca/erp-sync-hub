@@ -1,3 +1,5 @@
+using ErpSyncHub.Application.Resilience;
+using ErpSyncHub.Domain.Resilience;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using SapB1.Client;
@@ -28,6 +30,13 @@ internal sealed class SapHealthCheck(IServiceScopeFactory scopes, TimeProvider t
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
+        // Con el circuito abierto SAP no recibe tráfico, ni siquiera el de esta sonda: se informa el estado del circuito (que comparten
+        // todas las instancias) en vez de consultar a SAP. Esto no se guarda en la caché de unos segundos: el estado cambia rápido.
+        if (await DescribeOpenCircuitAsync(context, cancellationToken) is { } circuitResult)
+        {
+            return circuitResult;
+        }
+
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -48,6 +57,43 @@ internal sealed class SapHealthCheck(IServiceScopeFactory scopes, TimeProvider t
     }
 
     public void Dispose() => _gate.Dispose();
+
+    private async Task<HealthCheckResult?> DescribeOpenCircuitAsync(HealthCheckContext context, CancellationToken cancellationToken)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var circuit = scope.ServiceProvider.GetRequiredService<CircuitBreakerService>();
+        if (!circuit.Enabled)
+        {
+            return null;
+        }
+
+        var snapshot = await circuit.GetAsync(CircuitNames.Sap, cancellationToken);
+        if (snapshot.AllowsWork)
+        {
+            return null;
+        }
+
+        var reason = snapshot.Reason == CircuitOpenReason.CredentialsRejected
+            ? "SAP rechazó las credenciales: revise SAP__UserName, SAP__Password y SAP__CompanyDb y cierre el circuito desde el panel"
+            : "fallas pasajeras sostenidas";
+        var state = snapshot.State == CircuitState.HalfOpen ? "semiabierto (probando)" : "abierto";
+        var description =
+            $"El circuito de SAP está {state} ({reason}): no se envía trabajo a SAP desde {snapshot.OpenedAt:O}. " +
+            $"Próxima prueba: {snapshot.NextProbeAt:O}. Último error: {snapshot.LastErrorCode ?? "sin dato"}.";
+
+        var data = new Dictionary<string, object>
+        {
+            ["circuitState"] = snapshot.State == CircuitState.HalfOpen ? "half_open" : "open",
+            ["circuitReason"] = snapshot.Reason == CircuitOpenReason.CredentialsRejected ? "credentials_rejected" : "transient_failures",
+            ["openCount"] = snapshot.OpenCount,
+        };
+        if (snapshot.NextProbeAt is { } nextProbeAt)
+        {
+            data["nextProbeAt"] = nextProbeAt;
+        }
+
+        return new HealthCheckResult(context.Registration.FailureStatus, description, data: data);
+    }
 
     private async Task<HealthCheckResult> ProbeAsync(HealthCheckContext context, CancellationToken cancellationToken)
     {

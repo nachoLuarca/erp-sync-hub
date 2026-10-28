@@ -14,4 +14,12 @@ internal static class Sql
         await reader.ReadAsync();
         return await reader.IsDBNullAsync(0) ? default : reader.GetFieldValue<T>(0);
     }
+
+    public static async Task ExecuteAsync(string connectionString, string sql)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync();
+    }
 }

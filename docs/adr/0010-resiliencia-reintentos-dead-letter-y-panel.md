@@ -67,7 +67,7 @@ Reintentar es seguro porque cada paso de la sincronización de un pedido es idem
 Todo lo que cuelga de `/admin` exige la cabecera `X-Api-Key`. El webhook se protege con su firma HMAC; `/health` y la documentación en desarrollo quedan abiertos.
 
 - **Middleware por prefijo**, no un filtro por endpoint: una ruta que no existe bajo `/admin` también responde 401, así que no se puede explorar el panel sin clave, y ningún endpoint futuro queda abierto por olvido.
-- **Varias claves** separadas por coma en `Admin__ApiKey` (en Compose, `ERPSYNC_ADMIN_API_KEY`), cada una de 32 a 256 caracteres sin espacios, para **rotarlas sin cortar el acceso** (procedimiento en [variables de entorno](../variables-de-entorno.md#rotar-la-clave-sin-cortar-el-acceso)). Se valida al iniciar.
+- *(Reemplazado por el [ADR 0012](0012-roles-del-panel-y-auditoria.md): dos variables, lectura y operación.)* **Varias claves** separadas por coma en `Admin__ApiKey` (en Compose, `ERPSYNC_ADMIN_API_KEY`), cada una de 32 a 256 caracteres sin espacios, para **rotarlas sin cortar el acceso** (procedimiento en [variables de entorno](../variables-de-entorno.md#rotar-la-clave-sin-cortar-el-acceso)). Se valida al iniciar.
 - **Comparación en tiempo constante**: se reduce cada clave a su SHA-256 (de largo fijo, así que tampoco filtra el largo) y se comparan los hashes con `FixedTimeEquals`, recorriendo **todas** las claves y combinando con `|` en vez de `||`.
 - **Una cabecera repetida es ambigua** y se rechaza; la clave en la consulta o en `Authorization` no sirve.
 - **Sin clave configurada el panel no queda abierto**: responde 503 con un mensaje que dice qué variable definir, y el log lo avisa al arrancar. El hub sigue recibiendo pedidos. La alternativa, que el hub no arrancara, habría convertido un panel sin configurar en una caída del webhook.
@@ -107,10 +107,10 @@ Si el servicio se está apagando, cualquier falla del procesamiento de un job, n
 
 ## Consecuencias
 
-- Credenciales de SAP incorrectas se clasifican como `sap.session`, transitorio: el job se reintenta durante horas antes de llegar al dead letter. El health check (`Degraded`) y el log lo hacen evidente; el costo de clasificarlo como definitivo sería dejar jobs fallidos por una caída de login pasajera.
+- *(Actualizado por el [ADR 0011](0011-circuit-breaker-de-sap.md): las credenciales rechazadas tienen su propio código, `sap.invalid_credentials`, y abren el circuit breaker de inmediato.)* Credenciales de SAP incorrectas se clasificaban como `sap.session`, transitorio: el job se reintenta durante horas antes de llegar al dead letter. El health check (`Degraded`) y el log lo hacen evidente; el costo de clasificarlo como definitivo sería dejar jobs fallidos por una caída de login pasajera.
 - Un `job.unexpected` por un defecto real se reintenta hasta el máximo antes de quedar visible; es el precio de no distinguir un defecto de un fallo pasajero. El nivel `Error` y la excepción completa en cada intento evitan que pase desapercibido.
 - Cambiar la clave del panel exige reiniciar el hub; la rotación con varias claves lo hace sin cortar el acceso.
-- El panel no tiene roles: quien tiene una clave puede leer y reintentar. Para más de un nivel de acceso haría falta un esquema de autenticación completo.
+- *(Resuelto por el [ADR 0012](0012-roles-del-panel-y-auditoria.md): claves de lectura y de operación, con auditoría.)* El panel no tenía roles: quien tenía una clave podía leer y reintentar. Para más de un nivel de acceso haría falta un esquema de autenticación completo.
 - Las métricas cuentan filas de `sync_jobs` por estado: es barato con miles de jobs y deja de serlo con millones; llegado el caso se archivan los jobs terminados.
 
 ### Estabilidad de las pruebas bajo carga

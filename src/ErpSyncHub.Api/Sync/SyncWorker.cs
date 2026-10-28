@@ -1,4 +1,6 @@
 using ErpSyncHub.Application.Jobs;
+using ErpSyncHub.Application.Resilience;
+using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Application.Sync;
 using Microsoft.Extensions.Options;
 
@@ -74,6 +76,20 @@ internal sealed partial class SyncWorker(
     private async Task<bool> RunNextJobAsync(string workerId, CancellationToken stoppingToken)
     {
         await using var scope = scopes.CreateAsyncScope();
+
+        // Con el circuito de SAP abierto no se toma ningún job: todos dependen de SAP, y tomarlos solo gastaría sus intentos. La prueba
+        // semiabierta la hace, si toca, uno solo de los bucles de una sola instancia (la reserva es atómica en la base de datos).
+        var circuit = scope.ServiceProvider.GetRequiredService<CircuitBreakerService>();
+        if (circuit.Enabled)
+        {
+            var probe = scope.ServiceProvider.GetRequiredService<ISapProbe>();
+            await circuit.RunProbeIfDueAsync(CircuitNames.Sap, probe.ProbeAsync, stoppingToken);
+
+            if (!await circuit.AllowsWorkAsync(CircuitNames.Sap, stoppingToken))
+            {
+                return false;
+            }
+        }
 
         var queue = scope.ServiceProvider.GetRequiredService<IJobQueue>();
         var claimed = await queue.ClaimAsync(workerId, maxJobs: 1, _options.LeaseDuration, stoppingToken);

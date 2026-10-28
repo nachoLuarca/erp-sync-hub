@@ -9,6 +9,7 @@ internal static class ProblemDetailsSetup
     {
         [StatusCodes.Status400BadRequest] = ("Solicitud inválida", "urn:erp-sync-hub:problem:bad-request"),
         [StatusCodes.Status401Unauthorized] = ("No autorizado", "urn:erp-sync-hub:problem:unauthorized"),
+        [StatusCodes.Status403Forbidden] = ("Prohibido", "urn:erp-sync-hub:problem:forbidden"),
         [StatusCodes.Status404NotFound] = ("Recurso no encontrado", "urn:erp-sync-hub:problem:not-found"),
         [StatusCodes.Status409Conflict] = ("Conflicto", "urn:erp-sync-hub:problem:conflict"),
         [StatusCodes.Status405MethodNotAllowed] = ("Método no permitido", "urn:erp-sync-hub:problem:method-not-allowed"),

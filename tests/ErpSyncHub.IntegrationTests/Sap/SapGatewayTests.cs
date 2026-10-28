@@ -345,7 +345,7 @@ public class SapGatewayTests
     }
 
     [Fact]
-    public async Task Credenciales_incorrectas_son_un_error_de_sesion_pasajero()
+    public async Task Credenciales_incorrectas_son_un_error_pasajero_con_su_propio_codigo()
     {
         using var harness = SapGatewayHarness.AgainstMock(password: "incorrecta");
 
@@ -354,8 +354,9 @@ public class SapGatewayTests
         result.IsFailure.ShouldBeTrue();
         result.Error!.Kind.ShouldBe(ErrorKind.Transient);
         result.Error.IsTransient.ShouldBeTrue();
-        result.Error.Code.ShouldBe(SapErrors.Session);
+        result.Error.Code.ShouldBe(SapErrors.InvalidCredentials);
         result.Error.Message.ShouldContain("-304");
+        result.Error.Message.ShouldContain("SAP__Password");
     }
 
     [Fact]

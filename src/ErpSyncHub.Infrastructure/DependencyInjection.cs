@@ -1,19 +1,25 @@
+using ErpSyncHub.Application.Admin;
+using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Inventory;
 using ErpSyncHub.Application.Jobs;
+using ErpSyncHub.Application.Resilience;
 using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Application.Store;
 using ErpSyncHub.Application.Sync;
+using ErpSyncHub.Infrastructure.Admin;
 using ErpSyncHub.Infrastructure.Health;
 using ErpSyncHub.Infrastructure.Inventory;
 using ErpSyncHub.Infrastructure.Jobs;
 using ErpSyncHub.Infrastructure.Mappings;
 using ErpSyncHub.Infrastructure.Persistence;
+using ErpSyncHub.Infrastructure.Resilience;
 using ErpSyncHub.Infrastructure.Sap;
 using ErpSyncHub.Infrastructure.Store;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SapB1.Client;
 
@@ -39,8 +45,17 @@ public static class DependencyInjection
         services.AddScoped<IJobQueue, PostgresJobQueue>();
         services.AddScoped<IJobAdmin, JobAdmin>();
         services.AddScoped<IMappingStore, MappingStore>();
+        services.AddScoped<IMappingAdmin, MappingAdmin>();
         services.AddScoped<IItemSnapshotStore, ItemSnapshotStore>();
         services.AddScoped<IInventorySyncRunStore, InventorySyncRunStore>();
+        services.AddScoped<IAdminAudit, AdminAuditStore>();
+        services.AddScoped<ICircuitBreakerStore, CircuitBreakerStore>();
+        services.AddOptions<CircuitBreakerOptions>()
+            .Bind(configuration.GetSection(CircuitBreakerOptions.SectionName))
+            .ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<CircuitBreakerOptions>, CircuitBreakerOptionsValidator>());
+        services.AddSingleton(serviceProvider => serviceProvider.GetRequiredService<IOptions<CircuitBreakerOptions>>().Value);
+        services.AddScoped<CircuitBreakerService>();
         services.AddSingleton<IInventorySyncLock, PostgresInventorySyncLock>();
 
         // PostgreSQL caído es un fallo (el hub no puede guardar pedidos); SAP caído solo degrada (el inbox sigue recibiendo).
@@ -56,7 +71,15 @@ public static class DependencyInjection
         // Debe registrarse antes que cualquier servicio en segundo plano que use la base de datos.
         services.AddHostedService<DatabaseMigrationHostedService>();
 
-        return services.AddSapGateway(configuration).AddStoreGateway(configuration);
+        services.AddSapGateway(configuration).AddStoreGateway(configuration);
+
+        // El circuit breaker va delante del adaptador de SAP: reemplaza el registro simple de ISapGateway (gana el último).
+        services.AddScoped<ISapProbe, SapCircuitProbe>();
+        services.AddScoped<ISapGateway>(serviceProvider => new CircuitBreakingSapGateway(
+            serviceProvider.GetRequiredService<SapGateway>(),
+            serviceProvider.GetRequiredService<CircuitBreakerService>(),
+            serviceProvider.GetRequiredService<ILogger<CircuitBreakingSapGateway>>()));
+        return services;
     }
 
     /// <summary>
@@ -68,6 +91,7 @@ public static class DependencyInjection
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
+        services.AddExternalMessages(configuration);
         services.AddOptions<WooCommerceOptions>().Bind(configuration.GetSection(WooCommerceOptions.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<WooCommerceOptions>, WooCommerceOptionsValidator>());
 
@@ -100,10 +124,32 @@ public static class DependencyInjection
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
+        services.AddExternalMessages(configuration);
         services.AddSapB1Client(configuration);
         services.AddOptions<SapGatewayOptions>().Bind(configuration.GetSection(SapB1Options.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SapGatewayOptions>, SapGatewayOptionsValidator>());
-        services.AddScoped<ISapGateway, SapGateway>();
+        services.AddScoped<SapGateway>();
+        services.AddScoped<ISapGateway>(serviceProvider => serviceProvider.GetRequiredService<SapGateway>());
+        return services;
+    }
+
+    /// <summary>
+    /// Registra el recorte y la limpieza de los mensajes de los sistemas externos (sección <c>Messages</c>). Los dos adaptadores lo
+    /// necesitan y cada uno puede registrarse por separado, así que es seguro llamarlo más de una vez.
+    /// </summary>
+    private static IServiceCollection AddExternalMessages(this IServiceCollection services, IConfiguration configuration)
+    {
+        if (services.Any(descriptor => descriptor.ServiceType == typeof(ExternalMessageSanitizer)))
+        {
+            return services;
+        }
+
+        services.AddOptions<ExternalMessageOptions>()
+            .Bind(configuration.GetSection(ExternalMessageOptions.SectionName))
+            .ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<ExternalMessageOptions>, ExternalMessageOptionsValidator>());
+        services.AddSingleton(serviceProvider => serviceProvider.GetRequiredService<IOptions<ExternalMessageOptions>>().Value);
+        services.AddSingleton<ExternalMessageSanitizer>();
         return services;
     }
 }

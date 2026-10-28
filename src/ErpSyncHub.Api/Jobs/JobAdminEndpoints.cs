@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Claims;
+using ErpSyncHub.Api.Admin;
 using ErpSyncHub.Api.Problems;
 using ErpSyncHub.Application.Jobs;
 using ErpSyncHub.Domain.Jobs;
@@ -10,7 +12,7 @@ internal static class JobAdminEndpoints
 {
     public static void MapJobAdmin(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/admin/jobs").WithTags("Jobs");
+        var group = app.MapGroup("/jobs").WithTags("Jobs");
 
         group.MapGet(string.Empty, ListAsync)
             .WithName("ListJobs")
@@ -43,7 +45,9 @@ internal static class JobAdminEndpoints
             .Produces<JobSummaryResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .RequireAuthorization(AdminAccess.OperatePolicy);
 
         group.MapPost("/retry", RetryManyAsync)
             .WithName("RetryJobs")
@@ -53,12 +57,20 @@ internal static class JobAdminEndpoints
                 "demás.")
             .Produces<RetryJobsResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .RequireAuthorization(AdminAccess.OperatePolicy);
     }
 
-    private static async Task<IResult> RetryOneAsync(Guid id, IJobAdmin jobs, CancellationToken cancellationToken)
+    private static async Task<IResult> RetryOneAsync(
+        Guid id,
+        ClaimsPrincipal user,
+        IJobAdmin jobs,
+        AdminAuditor auditor,
+        CancellationToken cancellationToken)
     {
         var outcome = (await jobs.RetryAsync([id], cancellationToken)).Single();
+        await auditor.RecordAsync(user, "job.retry", id.ToString(), OutcomeName(outcome.Result));
 
         return outcome.Result switch
         {
@@ -69,7 +81,12 @@ internal static class JobAdminEndpoints
         };
     }
 
-    private static async Task<IResult> RetryManyAsync(RetryJobsRequest? request, IJobAdmin jobs, CancellationToken cancellationToken)
+    private static async Task<IResult> RetryManyAsync(
+        RetryJobsRequest? request,
+        ClaimsPrincipal user,
+        IJobAdmin jobs,
+        AdminAuditor auditor,
+        CancellationToken cancellationToken)
     {
         var ids = request?.Ids?.Distinct().ToList() ?? [];
         if (ids.Count == 0)
@@ -83,8 +100,21 @@ internal static class JobAdminEndpoints
         }
 
         var outcomes = await jobs.RetryAsync(ids, cancellationToken);
+        foreach (var outcome in outcomes)
+        {
+            await auditor.RecordAsync(user, "job.retry", outcome.JobId.ToString(), OutcomeName(outcome.Result));
+        }
+
         return Results.Ok(RetryJobsResponse.From(outcomes));
     }
+
+    private static string OutcomeName(JobRetryResult result) => result switch
+    {
+        JobRetryResult.Retried => "retried",
+        JobRetryResult.NotFound => "not_found",
+        JobRetryResult.NotRetryable => "not_retryable",
+        _ => "conflict",
+    };
 
     private static IResult Conflict(string code, string detail) =>
         Results.Problem(
@@ -155,7 +185,7 @@ internal static class JobAdminEndpoints
     }
 
     /// <summary>Una fecha o instante ISO 8601; sin zona horaria se asume UTC. Vacío es válido y significa "sin límite".</summary>
-    private static bool TryParseInstant(string? text, out DateTimeOffset? instant)
+    internal static bool TryParseInstant(string? text, out DateTimeOffset? instant)
     {
         instant = null;
         if (string.IsNullOrWhiteSpace(text))

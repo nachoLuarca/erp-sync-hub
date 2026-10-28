@@ -18,8 +18,19 @@ public sealed class PostgresFixture : IAsyncLifetime, IDisposable
     private readonly SemaphoreSlim _templateGate = new(1, 1);
     private bool _templateReady;
 
-    /// <summary>Conexión administrativa al servidor (base <c>postgres</c>).</summary>
-    public string AdminConnectionString => _container.GetConnectionString();
+    /// <summary>Variable que activa la conexión directa a la red de Docker (la define scripts/test-container.sh).</summary>
+    public const string ContainerNetworkVariable = "ERPSYNC_TESTS_CONTAINER_NETWORK";
+
+    /// <summary>
+    /// Conexión administrativa al servidor (base <c>postgres</c>). Si las pruebas corren dentro de un contenedor (ver
+    /// scripts/test.ps1), se conecta a la IP del contenedor de PostgreSQL por la red de Docker y no por el puerto publicado en el host:
+    /// las pruebas abren miles de conexiones sin pool y el reenvío de puertos de Docker Desktop deja algunas colgadas hasta agotar el
+    /// tiempo de espera, lo que hacía fallar pruebas al azar.
+    /// </summary>
+    public string AdminConnectionString =>
+        Environment.GetEnvironmentVariable(ContainerNetworkVariable) == "1"
+            ? new NpgsqlConnectionStringBuilder(_container.GetConnectionString()) { Host = _container.IpAddress, Port = 5432 }.ConnectionString
+            : _container.GetConnectionString();
 
     public async Task InitializeAsync() => await _container.StartAsync();
 

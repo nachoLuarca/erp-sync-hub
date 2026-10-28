@@ -2,8 +2,11 @@ using ErpSyncHub.Api.Admin;
 using ErpSyncHub.Api.Health;
 using ErpSyncHub.Api.Inventory;
 using ErpSyncHub.Api.Jobs;
+using ErpSyncHub.Api.Logging;
+using ErpSyncHub.Api.Mappings;
 using ErpSyncHub.Api.Metrics;
 using ErpSyncHub.Api.Problems;
+using ErpSyncHub.Api.Resilience;
 using ErpSyncHub.Api.Sync;
 using ErpSyncHub.Api.Webhooks;
 using ErpSyncHub.Application;
@@ -26,7 +29,8 @@ builder.Host.UseSerilog((context, services, logger) =>
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)
         .Enrich.FromLogContext()
-        .Enrich.WithProperty("Application", "ErpSyncHub");
+        .Enrich.WithProperty("Application", "ErpSyncHub")
+        .ProtectPersonalData();
 
     // Seq es opcional: sin Seq:ServerUrl el servicio funciona igual, solo con la consola.
     var seqUrl = context.Configuration["Seq:ServerUrl"];
@@ -92,7 +96,8 @@ app.UseSerilogRequestLogging(options =>
     };
 });
 app.UseStatusCodePages();
-app.UseAdminAuthentication();
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
@@ -112,9 +117,15 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     },
 });
 app.MapWooCommerceWebhooks();
-app.MapInventorySync();
-app.MapJobAdmin();
-app.MapMetrics();
+
+// Todo lo que cuelga de /admin exige una clave (lectura como mínimo); las acciones exigen una clave de operación.
+var admin = app.MapAdminGroup();
+admin.MapInventorySync();
+admin.MapJobAdmin();
+admin.MapMetrics();
+admin.MapAdminAudit();
+admin.MapMappingAdmin();
+admin.MapCircuitBreakers();
 
 app.Run();
 

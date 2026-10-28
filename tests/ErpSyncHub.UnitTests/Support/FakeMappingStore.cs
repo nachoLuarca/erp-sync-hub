@@ -35,4 +35,8 @@ internal sealed class FakeMappingStore : IMappingStore
         Customers.TryAdd(customerKey, cardCode);
         return Task.CompletedTask;
     }
+
+    public Task<bool> DeleteProductMappingAsync(string sku, CancellationToken cancellationToken) => Task.FromResult(Products.Remove(sku));
+
+    public Task<bool> DeleteCustomerMappingAsync(string customerKey, CancellationToken cancellationToken) => Task.FromResult(Customers.Remove(customerKey));
 }

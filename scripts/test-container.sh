@@ -19,6 +19,10 @@ if [ -n "$host_ipv4" ]; then
   export TESTCONTAINERS_HOST_OVERRIDE="$host_ipv4"
 fi
 
+# Las pruebas abren miles de conexiones a PostgreSQL: por la red de Docker (IP del contenedor) en vez del puerto publicado en el host,
+# cuyo reenvío en Docker Desktop deja colgadas algunas al azar. Ver PostgresFixture.
+export ERPSYNC_TESTS_CONTAINER_NETWORK=1
+
 step() { printf '\n==> %s\n' "$1"; }
 
 step "restore"

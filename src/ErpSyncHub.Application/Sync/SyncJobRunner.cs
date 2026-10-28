@@ -1,5 +1,6 @@
 using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Jobs;
+using ErpSyncHub.Application.Resilience;
 using ErpSyncHub.Domain.Common;
 using ErpSyncHub.Domain.Jobs;
 using Microsoft.Extensions.Logging;
@@ -39,6 +40,7 @@ public sealed partial class SyncJobRunner(
     OrderSyncService orders,
     IJobQueue queue,
     RetryPolicy retry,
+    ExternalMessageSanitizer messages,
     ILogger<SyncJobRunner> logger)
 {
     /// <summary>Tiempo que se concede a escribir el resultado en la base de datos, aunque el servicio se esté apagando.</summary>
@@ -111,10 +113,32 @@ public sealed partial class SyncJobRunner(
         catch (Exception exception)
         {
             LogUnexpected(exception);
-            failure = ResultError.Unexpected(JobErrors.Unexpected, $"Error inesperado ({exception.GetType().Name}): {PersonalDataRedactor.RedactRequired(exception.Message)}");
+            failure = ResultError.Unexpected(JobErrors.Unexpected, $"Error inesperado ({exception.GetType().Name}): {messages.Sanitize(exception.Message)}");
+        }
+
+        // El circuito se abrió mientras el job estaba en vuelo: SAP no se enteró, el intento no cuenta y el job espera a que el circuito cierre.
+        if (failure is { Code: CircuitErrors.Open })
+        {
+            await DeferAsync(claim);
+            return;
         }
 
         await CloseAsync(claim, outcome, failure);
+    }
+
+    private async Task DeferAsync(ClaimedJob claim)
+    {
+        using var closing = new CancellationTokenSource(ClosingTimeout);
+        var deferred = await queue.DeferAsync(claim, closing.Token);
+
+        if (deferred.IsSuccess)
+        {
+            LogDeferred();
+        }
+        else
+        {
+            LogNotClosed(deferred.Error!.Code);
+        }
     }
 
     private async Task CloseAsync(ClaimedJob claim, OrderSyncOutcome? outcome, ResultError? failure, RetryDecision? forced = null)
@@ -201,6 +225,9 @@ public sealed partial class SyncJobRunner(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "El servicio se apaga: el job vuelve a la cola para que otro worker lo tome")]
     private partial void LogReleased();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "El circuito de SAP está abierto: el job vuelve a la cola sin gastar un intento")]
+    private partial void LogDeferred();
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "No se pudo cerrar el job ({Code}): lo retomó otro worker o ya estaba cerrado")]
     private partial void LogNotClosed(string code);

@@ -1,4 +1,6 @@
+using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Jobs;
+using ErpSyncHub.Application.Resilience;
 using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Application.Sync;
 using ErpSyncHub.Domain.Common;
@@ -89,6 +91,22 @@ public class SyncJobRunnerRetryTests
             Arg.Is<ResultError>(error => error.Code == OrderSyncErrors.InvalidTaxId),
             Arg.Is<RetryDecision>(decision => decision.Action == RetryAction.Fail),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Si_el_circuito_de_SAP_esta_abierto_el_job_vuelve_a_la_cola_sin_gastar_un_intento()
+    {
+        var sap = Substitute.For<ISapGateway>();
+        sap.FindOrderByReferenceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result.Failure<SapOrderReference?>(ResultError.Transient(CircuitErrors.Open, "El circuito de SAP está abierto."))));
+        _queue.DeferAsync(Arg.Any<ClaimedJob>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(Result.Success()));
+        var claim = Claim();
+
+        await Runner(sap).RunAsync(claim, JobTimeout, CancellationToken.None);
+
+        await _queue.Received(1).DeferAsync(claim, Arg.Any<CancellationToken>());
+        await _queue.DidNotReceiveWithAnyArgs().FailAsync(default!, default!, default, default);
+        await _queue.DidNotReceiveWithAnyArgs().CompleteAsync(default!, default!, default);
     }
 
     [Fact]
@@ -186,6 +204,7 @@ public class SyncJobRunnerRetryTests
             new OrderSyncService(sap ?? _sap, new FakeMappingStore(), new OrderSyncOptions(), new FakeLogger<OrderSyncService>()),
             _queue,
             new RetryPolicy(new JobRetryOptions { MaxAttempts = maxAttempts }, () => 1.0),
+            new ExternalMessageSanitizer(new ExternalMessageOptions()),
             _logger);
 
     private IEnumerable<string> Messages(LogLevel level) =>

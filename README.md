@@ -86,7 +86,7 @@ dotnet run --project src/ErpSyncHub.Api
 
 ### Variables de entorno
 
-No hay archivo de configuración en el repositorio: todo entra por variables de entorno, y las de Docker Compose llevan el prefijo `ERPSYNC_` para no chocar con otros proyectos locales. La tabla completa (obligatoria o no, valor por defecto y para qué sirve) está en [docs/variables-de-entorno.md](docs/variables-de-entorno.md). Las obligatorias para el entorno por defecto son `ERPSYNC_POSTGRES_PASSWORD` y `ERPSYNC_WC_WEBHOOK_SECRET`; con la tienda, además `ERPSYNC_WP_DB_PASSWORD` y `ERPSYNC_WP_ADMIN_PASSWORD`; y para usar el [panel](docs/panel.md), `ERPSYNC_ADMIN_API_KEY` (sin ella el panel responde 503 y el resto del hub funciona).
+No hay archivo de configuración en el repositorio: todo entra por variables de entorno, y las de Docker Compose llevan el prefijo `ERPSYNC_` para no chocar con otros proyectos locales. La tabla completa (obligatoria o no, valor por defecto y para qué sirve) está en [docs/variables-de-entorno.md](docs/variables-de-entorno.md). Las obligatorias para el entorno por defecto son `ERPSYNC_POSTGRES_PASSWORD` y `ERPSYNC_WC_WEBHOOK_SECRET`; con la tienda, además `ERPSYNC_WP_DB_PASSWORD` y `ERPSYNC_WP_ADMIN_PASSWORD`; y para usar el [panel](docs/panel.md), `ERPSYNC_ADMIN_OPERATE_API_KEYS` (y, para consultar sin poder actuar, `ERPSYNC_ADMIN_READ_API_KEYS`; sin ninguna de las dos el panel responde 503 y el resto del hub funciona).
 
 **Windows (permanente, nivel usuario).** Abre una terminal nueva después de definirlas; las ya abiertas no las ven. Compose lee el entorno de la terminal desde la que lo ejecutas, así que no hace falta reiniciar Docker Desktop.
 
@@ -203,13 +203,17 @@ El producto `A00001` de la tienda queda con stock 15 (20 en mano menos 5 comprom
 
 Si SAP se cae, el hub sigue aceptando los webhooks de la tienda (202), los jobs quedan `retrying` con espera exponencial y jitter y se completan solos al volver SAP, sin duplicar la orden ni el cliente. Con los valores por defecto (12 intentos, 30 s de base, tope de 1 hora) un job atraviesa una caída de SAP de entre 2 h 32 min y 5 h 4 min de espera acumulada; si dura más, pasa al *dead letter* y se reintenta a mano. Los errores definitivos (SKU sin mapeo, RUT inválido) no se reintentan solos y quedan `failed`.
 
-Todo se ve y se corrige desde el [panel](docs/panel.md), que exige la cabecera `X-Api-Key` (una o varias claves en `ERPSYNC_ADMIN_API_KEY`, con [procedimiento de rotación](docs/variables-de-entorno.md#rotar-la-clave-sin-cortar-el-acceso)):
+Si SAP falla de forma sostenida (5 fallas consecutivas en 5 minutos, o credenciales rechazadas), el **circuit breaker** se abre: el worker deja de tomar jobs, que esperan en la cola **sin gastar sus intentos**, y una sola instancia prueba SAP cada cierto tiempo (30 s, que se duplica hasta 15 minutos) hasta que responda ([ADR 0011](docs/adr/0011-circuit-breaker-de-sap.md)). Si SAP rechaza una orden porque el cliente o el artículo de un mapeo guardado ya no existe, el hub elimina el mapeo y lo resuelve de nuevo solo. Los mensajes de SAP y de la tienda salen sin datos personales y recortados ([ADR 0013](docs/adr/0013-redaccion-de-datos-personales.md)).
+
+Todo se ve y se corrige desde el [panel](docs/panel.md), que exige la cabecera `X-Api-Key` con una clave de **lectura** (`ERPSYNC_ADMIN_READ_API_KEYS`) o de **operación** (`ERPSYNC_ADMIN_OPERATE_API_KEYS`, la única que puede reintentar, sincronizar, cerrar el circuito o eliminar mapeos), cada una con varias claves separadas por coma y [procedimiento de rotación](docs/variables-de-entorno.md#rotar-una-clave-sin-cortar-el-acceso):
 
 ```powershell
-$headers = @{ 'X-Api-Key' = $env:ERPSYNC_ADMIN_API_KEY }
+$headers = @{ 'X-Api-Key' = $env:ERPSYNC_ADMIN_OPERATE_API_KEYS.Split(',')[0] }
 Invoke-RestMethod 'http://localhost:5200/admin/metrics' -Headers $headers                          # jobs por estado y última sincronización de inventario
 Invoke-RestMethod 'http://localhost:5200/admin/jobs?status=failed,dead_letter' -Headers $headers   # lo que necesita atención
 Invoke-RestMethod "http://localhost:5200/admin/jobs/$id/retry" -Method Post -Headers $headers      # reintento manual
+Invoke-RestMethod 'http://localhost:5200/admin/circuit-breakers' -Headers $headers                    # estado del circuit breaker de SAP
+Invoke-RestMethod 'http://localhost:5200/admin/audit' -Headers $headers                               # quién hizo qué (huella de la clave)
 ```
 
 Para ver el comportamiento sin esperar, el SAP simulado permite inyectar fallas (caída total, latencia, errores 5xx intermitentes, sesión expirada): ver [simulación de fallas](docs/sap-mock.md#simulación-de-fallas). `./scripts/e2e-tienda.ps1` recorre el entorno completo contra la tienda WooCommerce real: sincroniza stock y precios, simula una caída de SAP, envía un pedido firmado, lo reintenta desde el panel y verifica que queda una sola orden, que el control de acceso responde y que los datos personales del pedido no llegaron a Seq.
@@ -247,6 +251,7 @@ En CI (GitHub Actions) no hace falta nada de esto: el runner ya tiene Docker y l
 | 2 | Webhook con firma HMAC-SHA256, tabla `sync_jobs`, worker con cola en PostgreSQL | v0.3.0 | ✅ Completa |
 | 3 | Sincronización periódica de stock y precios SAP → WooCommerce | v0.4.0 | ✅ Completa |
 | 4 | Backoff, dead letter, panel, reintento manual, simulación de fallas en el mock | v0.5.0 | ✅ Completa |
+| — | Endurecimiento: circuit breaker de SAP, mapeos obsoletos, roles del panel con auditoría, redacción contextual de datos personales | v0.6.0 | ✅ Completa |
 | 5 | Despliegue, diagrama final, NuGet de `SapB1.Client`, release automatizado | v1.0.0 | ⏳ Pendiente |
 
 ## Documentación

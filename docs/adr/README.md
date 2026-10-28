@@ -14,6 +14,9 @@ Cada decisión relevante se documenta en un ADR numerado e inmutable: si una dec
 | [0008](0008-sincronizacion-de-pedidos.md) | Sincronización de pedidos: idempotencia, clientes, productos y precios | Aceptada |
 | [0009](0009-sincronizacion-de-stock-y-precios.md) | Sincronización de stock y precios: lectura incremental, foto sincronizada y exclusión mutua | Aceptada |
 | [0010](0010-resiliencia-reintentos-dead-letter-y-panel.md) | Resiliencia: reintentos con backoff, dead letter, panel autenticado y datos personales | Aceptada |
+| [0011](0011-circuit-breaker-de-sap.md) | Circuit breaker de SAP compartido por todas las instancias | Aceptada |
+| [0012](0012-roles-del-panel-y-auditoria.md) | Roles del panel, autenticación con ASP.NET Core y auditoría de acciones | Aceptada |
+| [0013](0013-redaccion-de-datos-personales.md) | Redacción de datos personales en mensajes externos y logs | Aceptada |
 
 ## Plantilla
 

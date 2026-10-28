@@ -203,6 +203,27 @@ public sealed class SyncJob
     }
 
     /// <summary>
+    /// Devuelve el job a la cola porque el circuit breaker de SAP está abierto: el intento no llegó a SAP, así que no cuenta. El
+    /// presupuesto de intentos del ciclo vuelve a donde estaba (el historial de intentos, no: el intento queda registrado como
+    /// abandonado).
+    /// </summary>
+    public Result Defer(string workerId, DateTimeOffset now)
+    {
+        var ownership = EnsureOwnedBy(workerId);
+        if (ownership is not null)
+        {
+            return Result.Failure(ownership);
+        }
+
+        Status = JobStatus.Pending;
+        CycleAttempts = Math.Max(0, CycleAttempts - 1);
+        LockedBy = null;
+        LockedUntil = null;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
+    /// <summary>
     /// Cierra el job como fallido por un error definitivo, guardando el motivo. Reintentar no cambiaría nada: queda así hasta
     /// que una persona lo corrija y lo reintente a mano.
     /// </summary>

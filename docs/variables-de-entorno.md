@@ -39,7 +39,17 @@ Cómo definirlas en cada sistema está en el [README](../README.md#variables-de-
 | `ERPSYNC_JOB_MAX_ATTEMPTS` | No | `12` | Intentos de un job antes de pasar al dead letter. |
 | `ERPSYNC_JOB_RETRY_BASE_DELAY` | No | `00:00:30` | Espera tras el primer fallo; se duplica con cada intento. |
 | `ERPSYNC_JOB_RETRY_MAX_DELAY` | No | `01:00:00` | Tope de la espera entre intentos. |
-| `ERPSYNC_ADMIN_API_KEY` | Para usar el panel | — | Clave de acceso a `/admin/*` (cabecera `X-Api-Key`): de 32 a 256 caracteres sin espacios. Admite **varias claves separadas por coma** para rotarlas sin cortar el acceso. Sin ninguna, el panel responde 503. Ver [clave del panel](#clave-del-panel). |
+| `ERPSYNC_ADMIN_READ_API_KEYS` | Para consultar el panel | — | Claves de **lectura** de `/admin/*` (cabecera `X-Api-Key`): listan y ven jobs, métricas, mapeos, circuitos y auditoría. De 32 a 256 caracteres sin espacios cada una; admite **varias separadas por coma** para rotarlas sin cortar el acceso. Ver [claves del panel](#claves-del-panel). |
+| `ERPSYNC_ADMIN_OPERATE_API_KEYS` | Para operar el panel | — | Claves de **operación**: además de leer, reintentan jobs, disparan sincronizaciones, cierran el circuito y eliminan mapeos. Mismas reglas que las de lectura; una clave no puede estar en las dos listas. Sin ninguna clave en ninguna de las dos variables, el panel responde 503. **Reemplaza a `ERPSYNC_ADMIN_API_KEY`**, que ya no existe. |
+| `ERPSYNC_CIRCUIT_ENABLED` | No | `true` | Con `false` el circuit breaker de SAP nunca se abre (solo quedan los reintentos con backoff). Ver [circuit breaker](#circuit-breaker-de-sap). |
+| `ERPSYNC_CIRCUIT_FAILURE_THRESHOLD` | No | `5` | Fallas pasajeras consecutivas que abren el circuito (1 a 100). |
+| `ERPSYNC_CIRCUIT_FAILURE_WINDOW` | No | `00:05:00` | Las fallas consecutivas deben caer dentro de este tiempo, contado desde la primera (1 segundo a 1 día). |
+| `ERPSYNC_CIRCUIT_COOLDOWN_BASE` | No | `00:00:30` | Enfriamiento antes de la primera prueba; se duplica con cada prueba fallida. |
+| `ERPSYNC_CIRCUIT_COOLDOWN_MAX` | No | `00:15:00` | Tope del enfriamiento. |
+| `ERPSYNC_CIRCUIT_CREDENTIALS_COOLDOWN_BASE` | No | `00:15:00` | Enfriamiento cuando SAP rechazó las credenciales: largo a propósito, para no bloquear al usuario de SAP. |
+| `ERPSYNC_CIRCUIT_CREDENTIALS_COOLDOWN_MAX` | No | `01:00:00` | Tope del enfriamiento por credenciales. |
+| `ERPSYNC_CIRCUIT_PROBE_LEASE` | No | `00:00:30` | Cuánto vale la reserva de la prueba semiabierta (5 segundos a 10 minutos): si la instancia que la hace cae, otra la retoma al vencer. |
+| `ERPSYNC_EXTERNAL_MESSAGE_MAX_LENGTH` | No | `300` | Largo máximo (50 a 2000) de los mensajes de SAP y de la tienda que se guardan en el job y en los logs. Ver [datos personales](#datos-personales-en-los-mensajes). |
 
 Si un puerto del host está ocupado por otro proyecto, cambia la variable `*_HOST_PORT` que corresponda. Entre contenedores no importan: se hablan por nombre de servicio y puerto interno.
 
@@ -70,7 +80,17 @@ Las mismas variables sirven para un despliegue fuera de Compose. Para el detalle
 | `Worker__Retry__MaxAttempts` | No | `12` | Intentos de un job, contando el primero, antes de pasar al dead letter (1 a 100). Un reintento manual concede un presupuesto nuevo. |
 | `Worker__Retry__BaseDelay` | No | `00:00:30` | Espera tras el primer fallo transitorio; se duplica con cada intento (de 10 ms a 1 día). |
 | `Worker__Retry__MaxDelay` | No | `01:00:00` | Tope de la espera entre intentos: al menos `BaseDelay` y como máximo 1 día. A cada espera se le aplica *jitter*: dura entre el 50 % y el 100 % de lo calculado. |
-| `Admin__ApiKey` | Para usar el panel | — | Una o más claves de acceso a `/admin/*`, separadas por coma, de 32 a 256 caracteres sin espacios cada una. Se compara cada clave presentada con todas las configuradas en tiempo constante. Sin ninguna, el hub funciona (webhook, worker, `/health`) pero el panel responde 503 y el log lo avisa al arrancar. |
+| `Admin__ReadApiKeys` | Para consultar el panel | — | Claves de lectura de `/admin/*`, separadas por coma, de 32 a 256 caracteres sin espacios cada una. Se compara cada clave presentada con todas las configuradas en tiempo constante. |
+| `Admin__OperateApiKeys` | Para operar el panel | — | Claves de operación (también leen), con las mismas reglas. Sin ninguna clave en ninguna de las dos variables, el hub funciona (webhook, worker, `/health`) pero el panel responde 503 y el log lo avisa al arrancar. Una misma clave en las dos listas impide arrancar. |
+| `Circuit__Enabled` | No | `true` | Con `false` el circuit breaker de SAP nunca se abre. |
+| `Circuit__FailureThreshold` | No | `5` | Fallas pasajeras consecutivas que lo abren (1 a 100). |
+| `Circuit__FailureWindow` | No | `00:05:00` | Ventana, contada desde la primera falla de la racha (1 segundo a 1 día). |
+| `Circuit__CooldownBase` | No | `00:00:30` | Enfriamiento antes de la primera prueba (1 segundo a 1 día); se duplica con cada prueba fallida. |
+| `Circuit__CooldownMax` | No | `00:15:00` | Tope del enfriamiento: al menos `CooldownBase` y como máximo 1 día. |
+| `Circuit__CredentialsCooldownBase` | No | `00:15:00` | Enfriamiento tras credenciales rechazadas. |
+| `Circuit__CredentialsCooldownMax` | No | `01:00:00` | Tope del enfriamiento por credenciales. |
+| `Circuit__ProbeLease` | No | `00:00:30` | Reserva de la prueba semiabierta (5 segundos a 10 minutos). |
+| `Messages__ExternalMaxLength` | No | `300` | Largo máximo (50 a 2000) de los mensajes externos que se guardan y registran. |
 | `Sync__Inventory__Warehouses` | No | `01` | Códigos de los almacenes de SAP que se publican, separados por comas. El stock enviado es la suma de *en mano menos comprometido* de esos almacenes, con tope en 0. |
 | `Sync__Inventory__PriceList` | No | `1` | Número de la lista de precios de SAP. Un precio nulo o menor o igual a 0 no se envía. |
 | `Sync__Inventory__PriceDecimals` | No | `0` | Decimales del precio enviado (0 a 4). |
@@ -79,15 +99,31 @@ Las mismas variables sirven para un despliegue fuera de Compose. Para el detalle
 
 La sincronización de stock y precios está explicada en [docs/flujo-de-stock-y-precios.md](flujo-de-stock-y-precios.md).
 
-## Clave del panel
+## Claves del panel
 
-Todo lo que cuelga de `/admin` (jobs, reintentos, métricas, sincronización de inventario) exige la cabecera `X-Api-Key` con una de las claves de `ERPSYNC_ADMIN_API_KEY` (en el hub, `Admin__ApiKey`). El webhook de WooCommerce no la usa: se protege con su firma. `/health` y la documentación en desarrollo tampoco la piden.
+Todo lo que cuelga de `/admin` exige la cabecera `X-Api-Key`. Hay **dos niveles de clave**, en variables separadas ([ADR 0012](adr/0012-roles-del-panel-y-auditoria.md)):
 
-- **Sin clave configurada** el panel no queda abierto: responde 503 con un mensaje que dice qué variable definir.
-- **La clave nunca se registra**: ni la que presenta un cliente ni las configuradas aparecen en los logs; un acceso rechazado queda como advertencia con el método, la ruta y la IP.
+| Nivel | Variable (Compose · hub) | Puede |
+|---|---|---|
+| Lectura | `ERPSYNC_ADMIN_READ_API_KEYS` · `Admin__ReadApiKeys` | Listar y ver jobs, detalle, métricas, mapeos, circuitos y auditoría. |
+| Operación | `ERPSYNC_ADMIN_OPERATE_API_KEYS` · `Admin__OperateApiKeys` | Todo lo anterior, y reintentar jobs, disparar sincronizaciones, cerrar el circuito y eliminar mapeos. |
+
+Con una clave de lectura, una acción responde **403** y no se ejecuta. Un monitoreo debería tener solo una clave de lectura.
+
+> **Cambio incompatible: `ERPSYNC_ADMIN_API_KEY` ya no existe** (en el hub, `Admin__ApiKey`), y no hay alias. La versión v0.5.0 no estaba desplegada en ninguna parte, así que no hay clientes que migrar. Si la tenías definida, pásala a `ERPSYNC_ADMIN_OPERATE_API_KEYS`: equivale a lo que daba antes. En PowerShell, para renombrarla a nivel de usuario:
+>
+> ```powershell
+> $old = [Environment]::GetEnvironmentVariable('ERPSYNC_ADMIN_API_KEY', 'User')
+> [Environment]::SetEnvironmentVariable('ERPSYNC_ADMIN_OPERATE_API_KEYS', $old, 'User')
+> [Environment]::SetEnvironmentVariable('ERPSYNC_ADMIN_API_KEY', $null, 'User')
+> ```
+
+- **Sin ninguna clave configurada** el panel no queda abierto: responde 503 con un mensaje que dice qué variables definir.
+- **La clave nunca se registra**: ni la que presenta un cliente ni las configuradas aparecen en los logs; un acceso rechazado queda como advertencia con el método, la ruta y la IP. Lo que sí queda en la auditoría es la **huella** de la clave (8 caracteres del SHA-256), que no permite recuperarla.
 - **La comparación es en tiempo constante** (SHA-256 de cada clave y `FixedTimeEquals`, recorriendo todas), así que no filtra por el tiempo de respuesta ni el largo ni en qué posición difieren.
+- **Una misma clave en las dos listas impide arrancar**: cada clave tiene un solo nivel.
 
-Para generar una clave aleatoria de 64 caracteres hexadecimales y guardarla a nivel de usuario en Windows (PowerShell):
+Para generar claves aleatorias de 64 caracteres hexadecimales y guardarlas a nivel de usuario en Windows (PowerShell):
 
 ```powershell
 function New-Hex([int]$bytes) {
@@ -96,22 +132,35 @@ function New-Hex([int]$bytes) {
     -join ($buffer | ForEach-Object { $_.ToString('x2') })
 }
 
-[Environment]::SetEnvironmentVariable('ERPSYNC_ADMIN_API_KEY', (New-Hex 32), 'User')
+[Environment]::SetEnvironmentVariable('ERPSYNC_ADMIN_OPERATE_API_KEYS', (New-Hex 32), 'User')
+[Environment]::SetEnvironmentVariable('ERPSYNC_ADMIN_READ_API_KEYS', (New-Hex 32), 'User')   # opcional: para monitoreo
 ```
 
-En Linux y macOS: `export ERPSYNC_ADMIN_API_KEY="$(openssl rand -hex 32)"`. Abre una terminal nueva después de definirla y vuelve a levantar el hub (`docker compose up -d hub`) para que la lea. Para usarla: `Invoke-RestMethod http://localhost:5200/admin/metrics -Headers @{ 'X-Api-Key' = $env:ERPSYNC_ADMIN_API_KEY }`.
+En Linux y macOS: `export ERPSYNC_ADMIN_OPERATE_API_KEYS="$(openssl rand -hex 32)"`. Abre una terminal nueva después de definirlas y vuelve a levantar el hub (`docker compose up -d hub`) para que las lea. Para un despliegue fuera de Compose, entrega las claves desde un gestor de secretos.
 
-### Rotar la clave sin cortar el acceso
+### Rotar una clave sin cortar el acceso
 
-El hub lee la clave al arrancar, así que cambiarla exige reiniciarlo; admitir varias a la vez permite hacerlo sin que ningún cliente (scripts, paneles, el monitoreo) quede sin acceso en ningún momento:
+El hub lee las claves al arrancar, así que cambiarlas exige reiniciarlo; admitir varias a la vez permite hacerlo sin que ningún cliente (scripts, paneles, el monitoreo) quede sin acceso en ningún momento. El procedimiento es el mismo para cada nivel; aquí, con las de operación:
 
 1. **Genera la clave nueva** (`B`) como arriba, sin tocar la vigente (`A`).
-2. **Acepta las dos**: define `ERPSYNC_ADMIN_API_KEY=A,B` (la clave vigente primero, separadas por coma y sin espacios) y reinicia el hub. Desde aquí `A` y `B` abren el panel.
-3. **Pasa los clientes a `B`**: actualiza cada script, panel o monitor que use la clave. Comprueba que responden bien con `B`.
-4. **Confirma que nadie usa `A`**: en los logs (Seq) no deberían aparecer advertencias «Acceso rechazado al panel» de clientes legítimos, que son los que fallarían al retirar `A`.
-5. **Retira la vieja**: define `ERPSYNC_ADMIN_API_KEY=B` y reinicia el hub. `A` deja de valer.
+2. **Acepta las dos**: define `ERPSYNC_ADMIN_OPERATE_API_KEYS=A,B` (la clave vigente primero, separadas por coma y sin espacios) y reinicia el hub. Desde aquí `A` y `B` operan el panel.
+3. **Pasa los clientes a `B`**: actualiza cada script o panel que use la clave. Comprueba que responden bien con `B`.
+4. **Confirma que nadie usa `A`**: en los logs (Seq) no deberían aparecer advertencias «Acceso rechazado al panel» de clientes legítimos, y `GET /admin/audit?keyFingerprint=<huella de A>` no debería mostrar acciones recientes.
+5. **Retira la vieja**: define `ERPSYNC_ADMIN_OPERATE_API_KEYS=B` y reinicia el hub. `A` deja de valer.
 
-Si una clave se filtra, sáltate los pasos 3 y 4: define solo la clave nueva (`ERPSYNC_ADMIN_API_KEY=B`) y reinicia de inmediato, y luego actualiza los clientes.
+Si una clave se filtra, sáltate los pasos 3 y 4: define solo la clave nueva y reinicia de inmediato, y luego actualiza los clientes. La auditoría dice qué hizo la clave filtrada antes de retirarla: consulta `GET /admin/audit` con su huella (los primeros 8 caracteres hexadecimales del SHA-256 de la clave).
+
+## Circuit breaker de SAP
+
+Cuando SAP falla de forma sostenida, el hub **deja de enviarle trabajo** sin gastar los intentos de los jobs y lo retoma solo al volver SAP ([ADR 0011](adr/0011-circuit-breaker-de-sap.md)). Se abre con `Circuit__FailureThreshold` (5) fallas pasajeras **consecutivas** dentro de `Circuit__FailureWindow` (5 minutos); cualquier respuesta con sentido de SAP, incluso un rechazo de negocio, reinicia la cuenta. Si SAP rechaza las credenciales se abre de inmediato. Abierto, el worker no toma jobs, `/health` queda `Degraded` y no consulta a SAP, y cada `CooldownBase` (30 s, que se duplica con cada prueba fallida hasta 15 minutos) una sola instancia hace una prueba liviana: si pasa, se cierra y la cola se reanuda.
+
+- **Credenciales rechazadas**: la prueba espera más (15 minutos, hasta 1 hora) para no bloquear al usuario de SAP. Después de corregir `SAP__UserName`, `SAP__Password` o `SAP__CompanyDb` y reiniciar el hub, ciérralo a mano sin esperar: `POST /admin/circuit-breakers/sap/close` (clave de operación).
+- **Ver el estado**: `GET /admin/circuit-breakers`, la sección `circuits` de `/admin/metrics`, el chequeo `sap` de `/health` y, en Seq, los eventos con `CircuitName = 'sap'` (uno por transición).
+- **Apagarlo**: `ERPSYNC_CIRCUIT_ENABLED=false` deja solo los reintentos con backoff.
+
+## Datos personales en los mensajes
+
+Los mensajes de error de SAP y de la tienda se guardan en el job y se registran, pero antes se les **ocultan los datos personales** y se **recortan** a `Messages__ExternalMaxLength` (300) caracteres ([ADR 0013](adr/0013-redaccion-de-datos-personales.md)): se ocultan el RUT y los correos por su forma y, mientras se procesa un pedido, su nombre, dirección, teléfono, correo y RUT exactos (sin distinguir mayúsculas ni tildes). Una política de Serilog impide además registrar campos personales. Es una defensa por coincidencia exacta: un dato escrito distinto por el sistema externo no se reconoce, y el texto de una excepción generada por otro componente tampoco se limpia.
 
 ## Credenciales de la API de WooCommerce
 
