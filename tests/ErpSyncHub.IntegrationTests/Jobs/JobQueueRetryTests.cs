@@ -191,6 +191,39 @@ public class JobQueueRetryTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Diferir_un_job_lo_deja_pendiente_sin_gastar_el_intento_del_ciclo_y_con_el_intento_abandonado()
+    {
+        var (connectionString, queue) = await NewQueueAsync();
+        using var _ = queue;
+        await queue.EnqueueAsync(queue.NewJob("5501"));
+        var claim = (await queue.ClaimAsync("worker-1")).Single();
+
+        var result = await queue.DeferAsync(claim);
+
+        result.IsSuccess.ShouldBeTrue();
+        (await Scalar<string>(connectionString, "SELECT status FROM sync_jobs")).ShouldBe("pending");
+        (await Scalar<int>(connectionString, "SELECT cycle_attempts FROM sync_jobs")).ShouldBe(0);
+        (await Scalar<int>(connectionString, "SELECT attempt_count FROM sync_jobs")).ShouldBe(1);
+        (await Scalar<string>(connectionString, "SELECT outcome FROM sync_attempts")).ShouldBe("abandoned");
+
+        // Se puede tomar de inmediato y vuelve a ser el primer intento del ciclo.
+        (await queue.ClaimAsync("worker-2")).Single().CycleAttempt.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Diferir_un_job_que_otro_worker_retomo_falla_con_lost_lease()
+    {
+        var (_, queue) = await NewQueueAsync();
+        using var _ = queue;
+        await queue.EnqueueAsync(queue.NewJob("5501"));
+        var slow = (await queue.ClaimAsync("worker-1", lease: TimeSpan.FromMinutes(1))).Single();
+        queue.Time.Advance(TimeSpan.FromMinutes(2));
+        await queue.ClaimAsync("worker-2");
+
+        (await queue.DeferAsync(slow)).Error!.Code.ShouldBe("job.lost_lease");
+    }
+
+    [Fact]
     public async Task Una_espera_negativa_es_un_error_de_programacion()
     {
         var (_, queue) = await NewQueueAsync();

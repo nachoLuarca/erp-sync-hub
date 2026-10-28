@@ -1,4 +1,5 @@
 using ErpSyncHub.Application.Inventory;
+using ErpSyncHub.Application.Resilience;
 using ErpSyncHub.Application.Store;
 using Microsoft.Extensions.Options;
 
@@ -55,6 +56,14 @@ internal sealed partial class InventorySyncWorker(
         try
         {
             await using var scope = scopes.CreateAsyncScope();
+            // Con el circuito de SAP abierto la ejecución solo fallaría y quedaría registrada como fallida: se espera al próximo intervalo.
+            var circuit = scope.ServiceProvider.GetRequiredService<CircuitBreakerService>();
+            if (!await circuit.AllowsWorkAsync(CircuitNames.Sap, stoppingToken))
+            {
+                LogSkippedByCircuit();
+                return;
+            }
+
             var runner = scope.ServiceProvider.GetRequiredService<InventorySyncRunner>();
 
             // El resultado ya quedó registrado y logueado por el runner; aquí solo importa que un fallo no mate al servicio.
@@ -97,6 +106,9 @@ internal sealed partial class InventorySyncWorker(
         Message = "Sincronización periódica de stock y precios activa: cada {Interval}, completa de respaldo cada {FullInterval}, " +
                   "almacenes {Warehouses}, lista de precios {PriceList}, {PriceDecimals} decimales, páginas de {PageSize} artículos")]
     private partial void LogStarting(TimeSpan interval, TimeSpan fullInterval, string warehouses, int priceList, int priceDecimals, int pageSize);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Sincronización periódica de stock y precios omitida: el circuito de SAP está abierto")]
+    private partial void LogSkippedByCircuit();
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Sincronización periódica de stock y precios detenida")]
     private partial void LogStopped();

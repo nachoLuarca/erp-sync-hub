@@ -37,6 +37,12 @@ public interface IJobQueue
     /// otro lo tome de inmediato. Falla con <c>job.lost_lease</c> si otro worker lo retomó mientras tanto.
     /// </summary>
     Task<Result> ReleaseAsync(ClaimedJob claim, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Devuelve el job a la cola porque el circuit breaker de SAP estaba abierto: el intento no llegó a SAP, así que no se descuenta
+    /// del presupuesto de intentos del job. Falla con <c>job.lost_lease</c> si otro worker lo retomó mientras tanto.
+    /// </summary>
+    Task<Result> DeferAsync(ClaimedJob claim, CancellationToken cancellationToken);
 }
 
 /// <param name="JobId">Identificador del job, nuevo o ya existente.</param>

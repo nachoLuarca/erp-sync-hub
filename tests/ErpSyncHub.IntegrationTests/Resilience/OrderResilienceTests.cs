@@ -207,7 +207,9 @@ public sealed class OrderResilienceTests(PostgresFixture postgres) : IDisposable
             (await host.PostSignedAsync(OrderWithId(id))).StatusCode.ShouldBe(HttpStatusCode.Accepted);
         }
 
-        await host.WaitUntilAsync("SELECT count(*) = 12 AND bool_and(attempt_count >= 1) FROM sync_jobs", "que todos los pedidos se hayan intentado");
+        // Las primeras fallas abren el circuito de SAP: los pedidos que quedan sin intentar esperan en la cola en vez de gastar sus intentos.
+        await host.WaitUntilAsync("SELECT count(*) = 12 FROM sync_jobs", "que lleguen los doce pedidos");
+        await host.WaitUntilAsync("SELECT state = 'open' FROM circuit_breakers WHERE name = 'sap'", "que el circuito de SAP se abra");
         (await JobsAsync(host, "succeeded")).ShouldBe(0);
 
         await _sap.ClearFaultsAsync();

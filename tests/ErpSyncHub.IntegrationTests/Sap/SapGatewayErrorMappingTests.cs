@@ -79,8 +79,19 @@ public class SapGatewayErrorMappingTests
         result.Error!.Kind.ShouldBe(ErrorKind.Transient);
     }
 
+    [Fact]
+    public async Task Las_credenciales_rechazadas_en_el_inicio_de_sesion_tienen_su_propio_codigo_y_siguen_siendo_pasajeras()
+    {
+        _items.GetAsync("A1", Arg.Any<CancellationToken>())
+            .ThrowsAsync(new SapB1SessionException("SAP login failed", HttpStatusCode.Unauthorized, -304, "Fail to get DB credentials"));
+
+        var result = await Gateway().GetItemAsync("A1", CancellationToken.None);
+
+        result.Error!.Kind.ShouldBe(ErrorKind.Transient);
+        result.Error.Code.ShouldBe(SapErrors.InvalidCredentials);
+    }
+
     [Theory]
-    [InlineData(HttpStatusCode.Unauthorized, -304, "Fail to get DB credentials")]
     [InlineData(HttpStatusCode.Unauthorized, 301, "Invalid session.")]
     [InlineData(HttpStatusCode.BadGateway, null, null)]
     public async Task Los_problemas_de_sesion_son_pasajeros(HttpStatusCode status, int? code, string? message)

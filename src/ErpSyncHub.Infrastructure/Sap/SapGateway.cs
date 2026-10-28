@@ -222,6 +222,12 @@ internal sealed class SapGateway(ISapB1Client sap, IOptions<SapGatewayOptions> o
         {
             return Result.Failure<T>(Translate(exception));
         }
+        catch (SapB1SessionException exception) when (exception.SapErrorCode == SapB1ErrorCodes.InvalidCredentials)
+        {
+            return Result.Failure<T>(ResultError.Transient(
+                SapErrors.InvalidCredentials,
+                $"SAP rechazó las credenciales (SAP__UserName, SAP__Password, SAP__CompanyDb){Describe(exception.StatusCode, exception.SapErrorCode, exception.SapErrorMessage)}"));
+        }
         catch (SapB1SessionException exception)
         {
             return Result.Failure<T>(ResultError.Transient(

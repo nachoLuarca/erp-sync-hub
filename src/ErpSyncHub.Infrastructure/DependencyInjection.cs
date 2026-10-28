@@ -19,6 +19,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SapB1.Client;
 
@@ -70,7 +71,15 @@ public static class DependencyInjection
         // Debe registrarse antes que cualquier servicio en segundo plano que use la base de datos.
         services.AddHostedService<DatabaseMigrationHostedService>();
 
-        return services.AddSapGateway(configuration).AddStoreGateway(configuration);
+        services.AddSapGateway(configuration).AddStoreGateway(configuration);
+
+        // El circuit breaker va delante del adaptador de SAP: reemplaza el registro simple de ISapGateway (gana el último).
+        services.AddScoped<ISapProbe, SapCircuitProbe>();
+        services.AddScoped<ISapGateway>(serviceProvider => new CircuitBreakingSapGateway(
+            serviceProvider.GetRequiredService<SapGateway>(),
+            serviceProvider.GetRequiredService<CircuitBreakerService>(),
+            serviceProvider.GetRequiredService<ILogger<CircuitBreakingSapGateway>>()));
+        return services;
     }
 
     /// <summary>
@@ -119,7 +128,8 @@ public static class DependencyInjection
         services.AddSapB1Client(configuration);
         services.AddOptions<SapGatewayOptions>().Bind(configuration.GetSection(SapB1Options.SectionName)).ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<SapGatewayOptions>, SapGatewayOptionsValidator>());
-        services.AddScoped<ISapGateway, SapGateway>();
+        services.AddScoped<SapGateway>();
+        services.AddScoped<ISapGateway>(serviceProvider => serviceProvider.GetRequiredService<SapGateway>());
         return services;
     }
 
