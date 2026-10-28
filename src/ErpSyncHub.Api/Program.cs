@@ -92,7 +92,8 @@ app.UseSerilogRequestLogging(options =>
     };
 });
 app.UseStatusCodePages();
-app.UseAdminAuthentication();
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
@@ -112,9 +113,12 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     },
 });
 app.MapWooCommerceWebhooks();
-app.MapInventorySync();
-app.MapJobAdmin();
-app.MapMetrics();
+
+// Todo lo que cuelga de /admin exige una clave (lectura como mínimo); las acciones exigen una clave de operación.
+var admin = app.MapAdminGroup();
+admin.MapInventorySync();
+admin.MapJobAdmin();
+admin.MapMetrics();
 
 app.Run();
 

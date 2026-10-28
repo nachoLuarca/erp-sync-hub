@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using ErpSyncHub.IntegrationTests.Support;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,10 +29,14 @@ public class AdminAuthenticationTests(PostgresFixture postgres)
         return request;
     }
 
-    private Task<WebhookHost> StartAsync(string? adminApiKey = ApiFactory.AdminApiKey, Action<Microsoft.AspNetCore.Hosting.IWebHostBuilder>? configure = null) =>
+    private Task<WebhookHost> StartAsync(
+        string? adminApiKey = ApiFactory.AdminApiKey,
+        Action<Microsoft.AspNetCore.Hosting.IWebHostBuilder>? configure = null,
+        string? readApiKeys = null) =>
         WebhookHost.StartAsync(postgres, builder =>
         {
-            builder.UseSetting("Admin:ApiKey", adminApiKey ?? string.Empty);
+            builder.UseSetting("Admin:OperateApiKeys", adminApiKey ?? string.Empty);
+            builder.UseSetting("Admin:ReadApiKeys", readApiKeys ?? string.Empty);
             configure?.Invoke(builder);
         });
 
@@ -189,7 +194,7 @@ public class AdminAuthenticationTests(PostgresFixture postgres)
 
         withoutKey.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
         withAnyKey.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
-        (await withoutKey.Content.ReadAsStringAsync()).ShouldContain("Admin__ApiKey");
+        (await withoutKey.Content.ReadAsStringAsync()).ShouldContain("Admin__OperateApiKeys");
         withoutKey.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
     }
 
@@ -206,7 +211,7 @@ public class AdminAuthenticationTests(PostgresFixture postgres)
         sink.Events.ShouldContain(logEvent =>
             logEvent.Level == LogEventLevel.Warning
             && logEvent.RenderMessage().Contains("DESHABILITADO", StringComparison.Ordinal)
-            && logEvent.RenderMessage().Contains("Admin__ApiKey", StringComparison.Ordinal));
+            && logEvent.RenderMessage().Contains("Admin__OperateApiKeys", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -258,7 +263,7 @@ public class AdminAuthenticationTests(PostgresFixture postgres)
     }
 
     [Theory]
-    [InlineData("corta", "Admin:ApiKey")]
+    [InlineData("corta", "Admin:OperateApiKeys")]
     [InlineData("0123456789012345678901234567890", "32")] // 31 caracteres
     [InlineData("clave con espacios en el medio de la clave 0123456789", "espacios")]
     [InlineData("primera-clave-del-panel-0123456789abcdef,corta", "n.º 2")]
@@ -271,7 +276,111 @@ public class AdminAuthenticationTests(PostgresFixture postgres)
         var failure = Should.Throw<OptionsValidationException>(() => factory.CreateClient());
 
         failure.Message.ShouldContain(expected);
-        failure.Message.ShouldContain("Admin__ApiKey");
+        failure.Message.ShouldContain("Admin__OperateApiKeys");
+    }
+
+    private static HttpRequestMessage Post(string path, string key)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path);
+        request.Headers.Add("X-Api-Key", key);
+        return request;
+    }
+
+    [Fact]
+    public async Task Una_clave_de_lectura_consulta_pero_no_ejecuta_acciones_y_responde_403()
+    {
+        await using var host = await StartAsync(readApiKeys: ApiFactory.ReadApiKey);
+        using var client = host.CreateAnonymousClient();
+
+        (await client.SendAsync(Get(Panel, ApiFactory.ReadApiKey))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await client.SendAsync(Get("/admin/jobs", ApiFactory.ReadApiKey))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await client.SendAsync(Get("/admin/metrics", ApiFactory.ReadApiKey))).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var trigger = await client.SendAsync(Post("/admin/sync/inventory", ApiFactory.ReadApiKey));
+        var retry = await client.SendAsync(Post($"/admin/jobs/{Guid.NewGuid()}/retry", ApiFactory.ReadApiKey));
+        using var retryMany = new HttpRequestMessage(HttpMethod.Post, "/admin/jobs/retry") { Content = JsonContent.Create(new { ids = new[] { Guid.NewGuid() } }) };
+        retryMany.Headers.Add("X-Api-Key", ApiFactory.ReadApiKey);
+        var many = await client.SendAsync(retryMany);
+
+        trigger.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        retry.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        many.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        trigger.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+        (await trigger.Content.ReadAsStringAsync()).ShouldContain("clave de operación");
+        (await host.ScalarAsync<long>("SELECT count(*) FROM inventory_sync_runs")).ShouldBe(0); // la acción no se ejecutó
+    }
+
+    [Fact]
+    public async Task Una_clave_de_operacion_tambien_lee_y_ejecuta_acciones()
+    {
+        await using var host = await StartAsync(readApiKeys: ApiFactory.ReadApiKey);
+        using var client = host.CreateAnonymousClient();
+
+        (await client.SendAsync(Get(Panel, ApiFactory.AdminApiKey))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await client.SendAsync(Post($"/admin/jobs/{Guid.NewGuid()}/retry", ApiFactory.AdminApiKey))).StatusCode.ShouldBe(HttpStatusCode.NotFound); // llegó al endpoint
+    }
+
+    [Fact]
+    public async Task Solo_con_claves_de_lectura_el_panel_esta_habilitado_y_las_acciones_responden_403()
+    {
+        await using var host = await StartAsync(adminApiKey: null, readApiKeys: ApiFactory.ReadApiKey);
+        using var client = host.CreateAnonymousClient();
+
+        (await client.SendAsync(Get(Panel, ApiFactory.ReadApiKey))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await client.SendAsync(Post("/admin/sync/inventory", ApiFactory.ReadApiKey))).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Las_claves_de_lectura_tambien_se_rotan_con_varias_separadas_por_coma()
+    {
+        await using var host = await StartAsync(readApiKeys: $"{KeyA},{KeyB}");
+        using var client = host.CreateAnonymousClient();
+
+        (await client.SendAsync(Get(Panel, KeyA))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await client.SendAsync(Get(Panel, KeyB))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await client.SendAsync(Post("/admin/sync/inventory", KeyB))).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Una_misma_clave_en_las_dos_listas_impide_arrancar()
+    {
+        var connectionString = await postgres.CreateMigratedDatabaseAsync();
+        await using var factory = ApiFactory.Create(connectionString, adminApiKey: KeyA, readApiKey: KeyA);
+
+        var failure = Should.Throw<OptionsValidationException>(() => factory.CreateClient());
+
+        failure.Message.ShouldContain("Admin__ReadApiKeys");
+        failure.Message.ShouldContain("Admin__OperateApiKeys");
+        failure.Message.ShouldContain("un solo nivel");
+    }
+
+    [Fact]
+    public async Task Una_clave_de_lectura_invalida_nombra_su_propia_variable()
+    {
+        var connectionString = await postgres.CreateMigratedDatabaseAsync();
+        await using var factory = ApiFactory.Create(connectionString, readApiKey: "corta");
+
+        var failure = Should.Throw<OptionsValidationException>(() => factory.CreateClient());
+
+        failure.Message.ShouldContain("Admin:ReadApiKeys");
+        failure.Message.ShouldContain("ERPSYNC_ADMIN_READ_API_KEYS");
+    }
+
+    [Fact]
+    public async Task El_rechazo_a_una_clave_de_lectura_se_registra_con_su_huella_y_nunca_con_la_clave()
+    {
+        var sink = new CollectingSink();
+        await using var host = await StartAsync(
+            readApiKeys: ApiFactory.ReadApiKey,
+            configure: builder => builder.ConfigureTestServices(services => services.AddSingleton<ILogEventSink>(sink)));
+        using var client = host.CreateAnonymousClient();
+
+        await client.SendAsync(Post("/admin/sync/inventory", ApiFactory.ReadApiKey));
+
+        var forbidden = sink.Events.Single(logEvent => logEvent.RenderMessage().Contains("clave de lectura", StringComparison.Ordinal));
+        forbidden.Level.ShouldBe(LogEventLevel.Warning);
+        forbidden.Properties["KeyFingerprint"].ToString().Trim('"').Length.ShouldBe(8);
+        sink.Events.Select(Render).ShouldNotContain(text => text.Contains(ApiFactory.ReadApiKey, StringComparison.Ordinal));
     }
 
     [Fact]

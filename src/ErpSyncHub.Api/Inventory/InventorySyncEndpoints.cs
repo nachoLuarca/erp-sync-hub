@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ErpSyncHub.Api.Admin;
 using ErpSyncHub.Api.Problems;
 using ErpSyncHub.Application.Inventory;
 using ErpSyncHub.Domain.Inventory;
@@ -13,7 +14,7 @@ internal static class InventorySyncEndpoints
 
     public static void MapInventorySync(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/admin/sync/inventory").WithTags("Sincronización de stock y precios");
+        var group = app.MapGroup("/sync/inventory").WithTags("Sincronización de stock y precios");
 
         group.MapPost(string.Empty, TriggerAsync)
             .WithName("TriggerInventorySync")
@@ -24,7 +25,9 @@ internal static class InventorySyncEndpoints
                 "la tienda, ignorando la última foto sincronizada. Responde 200 aunque la ejecución haya terminado con errores (revisa " +
                 "el estado), y 409 si ya hay una sincronización en curso o la tienda no está configurada.")
             .Produces<InventorySyncRunResponse>()
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .RequireAuthorization(AdminAccess.OperatePolicy);
 
         group.MapGet("/last", GetLastAsync)
             .WithName("GetLastInventorySync")

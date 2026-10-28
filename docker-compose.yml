@@ -82,7 +82,8 @@ services:
       Worker__Retry__BaseDelay: ${ERPSYNC_JOB_RETRY_BASE_DELAY:-00:00:30}
       Worker__Retry__MaxDelay: ${ERPSYNC_JOB_RETRY_MAX_DELAY:-01:00:00}
       # Sin clave, el panel (/admin/*) queda deshabilitado (503); admite varias claves separadas por coma para rotarlas.
-      Admin__ApiKey: ${ERPSYNC_ADMIN_API_KEY:-}
+      Admin__ReadApiKeys: ${ERPSYNC_ADMIN_READ_API_KEYS:-}
+      Admin__OperateApiKeys: ${ERPSYNC_ADMIN_OPERATE_API_KEYS:-}
     ports:
       - "127.0.0.1:${ERPSYNC_HUB_HOST_PORT:-5200}:8080"
   # --- Tienda WooCommerce (opcional): docker compose --profile tienda up -d ---

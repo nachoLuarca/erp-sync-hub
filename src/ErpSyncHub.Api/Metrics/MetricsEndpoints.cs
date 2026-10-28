@@ -10,7 +10,7 @@ internal static class MetricsEndpoints
 {
     public static void MapMetrics(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/admin/metrics", GetAsync)
+        app.MapGet("/metrics", GetAsync)
             .WithName("GetMetrics")
             .WithTags("Métricas")
             .WithSummary("Jobs por estado, atraso de la cola y última sincronización de inventario.")

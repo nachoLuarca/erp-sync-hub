@@ -8,7 +8,7 @@
         docker compose --profile tienda up -d --build
 
     (variables ERPSYNC_POSTGRES_PASSWORD, ERPSYNC_WC_WEBHOOK_SECRET, ERPSYNC_WP_DB_PASSWORD, ERPSYNC_WP_ADMIN_PASSWORD,
-    ERPSYNC_WC_CONSUMER_KEY, ERPSYNC_WC_CONSUMER_SECRET y ERPSYNC_ADMIN_API_KEY; ver docs/variables-de-entorno.md).
+    ERPSYNC_WC_CONSUMER_KEY, ERPSYNC_WC_CONSUMER_SECRET y ERPSYNC_ADMIN_OPERATE_API_KEYS; ver docs/variables-de-entorno.md).
 
     Además de la sincronización de stock y precios, comprueba la resiliencia: simula una caída de SAP, envía un pedido firmado
     como lo haría WooCommerce, lo reintenta desde el panel al volver SAP y verifica que queda una sola orden, que las métricas y
@@ -60,9 +60,9 @@ if (-not $key -or -not $secret) {
 }
 
 # El panel del hub exige una API key; si hay varias separadas por coma, basta la primera.
-$adminKey = ("$env:ERPSYNC_ADMIN_API_KEY" -split ',')[0].Trim()
+$adminKey = ("$env:ERPSYNC_ADMIN_OPERATE_API_KEYS" -split ',')[0].Trim()
 if (-not $adminKey) {
-    throw 'Define ERPSYNC_ADMIN_API_KEY (ver docs/variables-de-entorno.md).'
+    throw 'Define ERPSYNC_ADMIN_OPERATE_API_KEYS (ver docs/variables-de-entorno.md).'
 }
 
 $hubHeaders = @{ 'X-Api-Key' = $adminKey }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using ErpSyncHub.Api.Admin;
 using ErpSyncHub.Api.Problems;
 using ErpSyncHub.Application.Jobs;
 using ErpSyncHub.Domain.Jobs;
@@ -10,7 +11,7 @@ internal static class JobAdminEndpoints
 {
     public static void MapJobAdmin(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/admin/jobs").WithTags("Jobs");
+        var group = app.MapGroup("/jobs").WithTags("Jobs");
 
         group.MapGet(string.Empty, ListAsync)
             .WithName("ListJobs")
@@ -43,7 +44,9 @@ internal static class JobAdminEndpoints
             .Produces<JobSummaryResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .RequireAuthorization(AdminAccess.OperatePolicy);
 
         group.MapPost("/retry", RetryManyAsync)
             .WithName("RetryJobs")
@@ -53,7 +56,9 @@ internal static class JobAdminEndpoints
                 "demás.")
             .Produces<RetryJobsResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .RequireAuthorization(AdminAccess.OperatePolicy);
     }
 
     private static async Task<IResult> RetryOneAsync(Guid id, IJobAdmin jobs, CancellationToken cancellationToken)
