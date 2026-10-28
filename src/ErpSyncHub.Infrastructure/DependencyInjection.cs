@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.AddScoped<IJobQueue, PostgresJobQueue>();
         services.AddScoped<IJobAdmin, JobAdmin>();
         services.AddScoped<IMappingStore, MappingStore>();
+        services.AddScoped<IMappingAdmin, MappingAdmin>();
         services.AddScoped<IItemSnapshotStore, ItemSnapshotStore>();
         services.AddScoped<IInventorySyncRunStore, InventorySyncRunStore>();
         services.AddScoped<IAdminAudit, AdminAuditStore>();

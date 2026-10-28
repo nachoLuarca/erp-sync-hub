@@ -3,6 +3,7 @@ using ErpSyncHub.Api.Health;
 using ErpSyncHub.Api.Inventory;
 using ErpSyncHub.Api.Jobs;
 using ErpSyncHub.Api.Logging;
+using ErpSyncHub.Api.Mappings;
 using ErpSyncHub.Api.Metrics;
 using ErpSyncHub.Api.Problems;
 using ErpSyncHub.Api.Sync;
@@ -122,6 +123,7 @@ admin.MapInventorySync();
 admin.MapJobAdmin();
 admin.MapMetrics();
 admin.MapAdminAudit();
+admin.MapMappingAdmin();
 
 app.Run();
 
