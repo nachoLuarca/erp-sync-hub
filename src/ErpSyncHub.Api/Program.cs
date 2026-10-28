@@ -2,6 +2,7 @@ using ErpSyncHub.Api.Admin;
 using ErpSyncHub.Api.Health;
 using ErpSyncHub.Api.Inventory;
 using ErpSyncHub.Api.Jobs;
+using ErpSyncHub.Api.Logging;
 using ErpSyncHub.Api.Metrics;
 using ErpSyncHub.Api.Problems;
 using ErpSyncHub.Api.Sync;
@@ -26,7 +27,8 @@ builder.Host.UseSerilog((context, services, logger) =>
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)
         .Enrich.FromLogContext()
-        .Enrich.WithProperty("Application", "ErpSyncHub");
+        .Enrich.WithProperty("Application", "ErpSyncHub")
+        .ProtectPersonalData();
 
     // Seq es opcional: sin Seq:ServerUrl el servicio funciona igual, solo con la consola.
     var seqUrl = context.Configuration["Seq:ServerUrl"];
