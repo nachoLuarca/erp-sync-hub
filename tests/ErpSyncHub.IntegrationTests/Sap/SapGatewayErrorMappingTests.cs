@@ -1,4 +1,5 @@
 using System.Net;
+using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Domain.Common;
 using ErpSyncHub.IntegrationTests.Support;
@@ -91,6 +92,38 @@ public class SapGatewayErrorMappingTests
         result.Error!.Kind.ShouldBe(ErrorKind.Transient);
         result.Error.Code.ShouldBe(SapErrors.Session);
         result.Error.Message.ShouldContain($"HTTP {(int)status}");
+    }
+
+    [Fact]
+    public async Task El_mensaje_de_SAP_no_deja_pasar_el_nombre_ni_la_direccion_ni_el_telefono_del_pedido_en_proceso()
+    {
+        _items.GetAsync("A1", Arg.Any<CancellationToken>()).ThrowsAsync(new SapB1ApiException(
+            HttpStatusCode.BadRequest,
+            -10,
+            "Customer VALENTINA MUNOZ at av. providencia 1234 (+56 9 1234 5678) is frozen"));
+        using var personalData = PersonalDataScope.Begin(
+        [
+            new PersonalValue(PersonalDataKind.Name, "Valentina Muñoz"),
+            new PersonalValue(PersonalDataKind.Address, "Av. Providencia 1234"),
+            new PersonalValue(PersonalDataKind.Phone, "+56912345678"),
+        ]);
+
+        var result = await Gateway().GetItemAsync("A1", CancellationToken.None);
+
+        result.Error!.Message.ShouldContain("Customer [nombre] at [dirección] ([teléfono]) is frozen");
+        result.Error.Message.ShouldNotContain("MUNOZ");
+        result.Error.Message.ShouldNotContain("providencia");
+        result.Error.Message.ShouldNotContain("5678");
+    }
+
+    [Fact]
+    public async Task Sin_pedido_en_proceso_el_mensaje_de_SAP_conserva_los_nombres()
+    {
+        _items.GetAsync("A1", Arg.Any<CancellationToken>()).ThrowsAsync(new SapB1ApiException(HttpStatusCode.BadRequest, -10, "Customer VALENTINA MUNOZ is frozen"));
+
+        var result = await Gateway().GetItemAsync("A1", CancellationToken.None);
+
+        result.Error!.Message.ShouldContain("VALENTINA MUNOZ"); // el ámbito es del pedido en proceso, no una lista global
     }
 
     [Fact]

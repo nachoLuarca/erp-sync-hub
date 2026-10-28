@@ -28,6 +28,9 @@ internal sealed class FakeSapGateway : ISapGateway
     /// <summary>Se ejecuta justo después de crear una orden; permite simular que algo ocurre en ese instante.</summary>
     public Action? AfterCreateOrder { get; set; }
 
+    /// <summary>Se ejecuta al recibir cada operación, con su nombre; permite observar el estado del servicio en ese instante.</summary>
+    public Action<string>? OnCall { get; set; }
+
     /// <summary>Último correo recibido en una búsqueda.</summary>
     public string? LastEmailSearched { get; private set; }
 
@@ -142,6 +145,7 @@ internal sealed class FakeSapGateway : ISapGateway
     private Task<Result<T>> Run<T>(string operation, Func<T> action)
     {
         Calls.Add(operation);
+        OnCall?.Invoke(operation);
         return Task.FromResult(_failures.TryGetValue(operation, out var error)
             ? Result.Failure<T>(error)
             : Result.Success(action()));

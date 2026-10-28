@@ -1,4 +1,5 @@
 using System.Net;
+using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Store;
 using ErpSyncHub.Domain.Common;
 using ErpSyncHub.Infrastructure;
@@ -306,6 +307,22 @@ public sealed class WooCommerceGatewayTests : IDisposable
 
         result.Error!.Code.ShouldBe(StoreErrors.Unreachable);
         result.Error.IsTransient.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task El_mensaje_de_la_tienda_no_deja_pasar_el_nombre_del_pedido_en_proceso()
+    {
+        _store.RespondNextWith(
+            HttpStatusCode.OK,
+            "{\"update\":[{\"id\":1,\"error\":{\"code\":\"invalid\",\"message\":\"Pedido de JOSE PEREZ rechazado\",\"data\":{\"status\":400}}}]}");
+        await using var provider = Provider();
+        using var personalData = PersonalDataScope.Begin([new PersonalValue(PersonalDataKind.Name, "José Pérez")]);
+
+        var result = await Gateway(provider).UpdateProductsAsync([new StoreProductUpdate(1, "A", 1, null)], CancellationToken.None);
+
+        var message = result.Value.Single().Error!.Message;
+        message.ShouldContain("Pedido de [nombre] rechazado");
+        message.ShouldNotContain("PEREZ");
     }
 
     [Fact]

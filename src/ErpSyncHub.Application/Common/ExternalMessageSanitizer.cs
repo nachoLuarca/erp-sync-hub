@@ -45,7 +45,9 @@ public sealed class ExternalMessageSanitizer(ExternalMessageOptions options)
             return string.Empty;
         }
 
-        return Truncate(PersonalDataRedactor.RedactRequired(message));
+        // Primero lo que se sabe del pedido en proceso (nombre, dirección, teléfono...), después los patrones (RUT, correos).
+        var withoutOrderData = PersonalDataScope.Redact(message) ?? string.Empty;
+        return Truncate(PersonalDataRedactor.RedactRequired(withoutOrderData));
     }
 
     private string Truncate(string text)

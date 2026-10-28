@@ -1,4 +1,5 @@
 using System.Globalization;
+using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Jobs;
 using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Application.WooCommerce;
@@ -65,6 +66,10 @@ public sealed partial class OrderSyncService(
         }
 
         var order = parsed.Value;
+
+        // Desde aquí, cualquier mensaje de SAP o de la tienda que repita un dato de este pedido sale con el dato oculto.
+        using var personalData = PersonalDataScope.Begin(OrderPersonalData.Of(order, options.TaxIdMetaKey));
+
         var reference = $"{OrderSyncOptions.ReferencePrefix}{order.Id.ToString(CultureInfo.InvariantCulture)}";
 
         // Validaciones locales primero: no vale la pena llamar a SAP por un pedido que se sabe inválido.
