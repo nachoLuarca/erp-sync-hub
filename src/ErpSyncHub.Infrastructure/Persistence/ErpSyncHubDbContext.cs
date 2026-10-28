@@ -1,3 +1,4 @@
+using ErpSyncHub.Domain.Admin;
 using ErpSyncHub.Domain.Inventory;
 using ErpSyncHub.Domain.Jobs;
 using ErpSyncHub.Domain.Mappings;
@@ -19,6 +20,8 @@ public sealed class ErpSyncHubDbContext(DbContextOptions<ErpSyncHubDbContext> op
     public DbSet<ItemSnapshot> ItemSnapshots => Set<ItemSnapshot>();
 
     public DbSet<InventorySyncRun> InventorySyncRuns => Set<InventorySyncRun>();
+
+    public DbSet<AdminAuditEntry> AdminAudit => Set<AdminAuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

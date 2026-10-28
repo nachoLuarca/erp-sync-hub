@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using ErpSyncHub.Api.Admin;
 using ErpSyncHub.Api.Problems;
@@ -44,11 +45,19 @@ internal static class InventorySyncEndpoints
 
     private static async Task<IResult> TriggerAsync(
         bool? full,
+        ClaimsPrincipal user,
         InventorySyncRunner runner,
+        AdminAuditor auditor,
         IHostApplicationLifetime lifetime)
     {
         // La ejecución solo se interrumpe al detener el hub: si quien llama corta la conexión, la sincronización termina igual.
         var result = await runner.RunAsync(InventorySyncTrigger.Manual, full ?? false, lifetime.ApplicationStopping);
+
+        await auditor.RecordAsync(
+            user,
+            "inventory.sync",
+            full == true ? "full" : "incremental",
+            result.IsFailure ? result.Error!.Code : InventorySyncRunResponse.From(result.Value).Status);
 
         return result.IsFailure
             ? Results.Problem(

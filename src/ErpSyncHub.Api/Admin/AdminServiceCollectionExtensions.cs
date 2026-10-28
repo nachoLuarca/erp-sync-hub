@@ -17,6 +17,7 @@ internal static class AdminServiceCollectionExtensions
             .ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<AdminApiKeyOptions>, AdminApiKeyOptionsValidator>());
         services.AddSingleton<AdminKeyRing>();
+        services.AddScoped<AdminAuditor>();
 
         // El esquema solo actúa donde un endpoint exige autorización: el webhook, la salud y la documentación no lo usan.
         services.AddAuthentication(AdminAccess.Scheme)

@@ -21,7 +21,7 @@ public class MigrationTests(PostgresFixture postgres)
             connectionString,
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name <> '__EFMigrationsHistory' ORDER BY table_name");
         tables.ShouldBe(
-            ["customer_mappings", "inventory_sync_runs", "item_snapshots", "product_mappings", "sync_attempts", "sync_jobs"]);
+            ["admin_audit", "customer_mappings", "inventory_sync_runs", "item_snapshots", "product_mappings", "sync_attempts", "sync_jobs"]);
     }
 
     [Fact]

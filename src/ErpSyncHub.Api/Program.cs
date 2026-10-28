@@ -119,6 +119,7 @@ var admin = app.MapAdminGroup();
 admin.MapInventorySync();
 admin.MapJobAdmin();
 admin.MapMetrics();
+admin.MapAdminAudit();
 
 app.Run();
 
