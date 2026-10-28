@@ -2,6 +2,7 @@ using ErpSyncHub.Application.Admin;
 using ErpSyncHub.Application.Common;
 using ErpSyncHub.Application.Inventory;
 using ErpSyncHub.Application.Jobs;
+using ErpSyncHub.Application.Resilience;
 using ErpSyncHub.Application.Sap;
 using ErpSyncHub.Application.Store;
 using ErpSyncHub.Application.Sync;
@@ -11,6 +12,7 @@ using ErpSyncHub.Infrastructure.Inventory;
 using ErpSyncHub.Infrastructure.Jobs;
 using ErpSyncHub.Infrastructure.Mappings;
 using ErpSyncHub.Infrastructure.Persistence;
+using ErpSyncHub.Infrastructure.Resilience;
 using ErpSyncHub.Infrastructure.Sap;
 using ErpSyncHub.Infrastructure.Store;
 using Microsoft.Extensions.Configuration;
@@ -46,6 +48,13 @@ public static class DependencyInjection
         services.AddScoped<IItemSnapshotStore, ItemSnapshotStore>();
         services.AddScoped<IInventorySyncRunStore, InventorySyncRunStore>();
         services.AddScoped<IAdminAudit, AdminAuditStore>();
+        services.AddScoped<ICircuitBreakerStore, CircuitBreakerStore>();
+        services.AddOptions<CircuitBreakerOptions>()
+            .Bind(configuration.GetSection(CircuitBreakerOptions.SectionName))
+            .ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<CircuitBreakerOptions>, CircuitBreakerOptionsValidator>());
+        services.AddSingleton(serviceProvider => serviceProvider.GetRequiredService<IOptions<CircuitBreakerOptions>>().Value);
+        services.AddScoped<CircuitBreakerService>();
         services.AddSingleton<IInventorySyncLock, PostgresInventorySyncLock>();
 
         // PostgreSQL caído es un fallo (el hub no puede guardar pedidos); SAP caído solo degrada (el inbox sigue recibiendo).

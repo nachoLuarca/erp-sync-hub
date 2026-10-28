@@ -17,7 +17,7 @@ public class ApiStartupTests(PostgresFixture postgres)
         var response = await client.GetAsync("/health");
 
         response.IsSuccessStatusCode.ShouldBeTrue();
-        (await TableCountAsync(connectionString)).ShouldBe(8); // las 7 tablas más el historial de migraciones
+        (await TableCountAsync(connectionString)).ShouldBe(9); // las 8 tablas más el historial de migraciones
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public class ApiStartupTests(PostgresFixture postgres)
         await using var second = ApiFactory.Create(connectionString, migrateOnStartup: true);
         using var secondClient = second.CreateClient();
 
-        (await TableCountAsync(connectionString)).ShouldBe(8);
+        (await TableCountAsync(connectionString)).ShouldBe(9);
     }
 
     [Fact]

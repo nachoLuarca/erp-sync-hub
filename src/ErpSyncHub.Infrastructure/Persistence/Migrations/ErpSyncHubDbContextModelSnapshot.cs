@@ -458,6 +458,73 @@ namespace ErpSyncHub.Infrastructure.Persistence.Migrations
                     b.ToTable("product_mappings", (string)null);
                 });
 
+            modelBuilder.Entity("ErpSyncHub.Domain.Resilience.CircuitBreaker", b =>
+                {
+                    b.Property<string>("Name")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("ConsecutiveFailures")
+                        .HasColumnType("integer")
+                        .HasColumnName("consecutive_failures");
+
+                    b.Property<DateTimeOffset?>("FirstFailureAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_failure_at");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("last_error_code");
+
+                    b.Property<string>("LastErrorMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("last_error_message");
+
+                    b.Property<DateTimeOffset?>("NextProbeAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_probe_at");
+
+                    b.Property<int>("OpenCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("open_count");
+
+                    b.Property<DateTimeOffset?>("OpenedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("opened_at");
+
+                    b.Property<DateTimeOffset?>("ProbeLeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("probe_lease_until");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("state");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Name")
+                        .HasName("pk_circuit_breakers");
+
+                    b.ToTable("circuit_breakers", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_circuit_breakers_counters", "consecutive_failures >= 0 AND open_count >= 0");
+
+                            t.HasCheckConstraint("ck_circuit_breakers_state", "state IN ('closed', 'open', 'half_open')");
+                        });
+                });
+
             modelBuilder.Entity("ErpSyncHub.Domain.Jobs.SyncAttempt", b =>
                 {
                     b.HasOne("ErpSyncHub.Domain.Jobs.SyncJob", null)

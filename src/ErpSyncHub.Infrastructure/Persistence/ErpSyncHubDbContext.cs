@@ -2,6 +2,7 @@ using ErpSyncHub.Domain.Admin;
 using ErpSyncHub.Domain.Inventory;
 using ErpSyncHub.Domain.Jobs;
 using ErpSyncHub.Domain.Mappings;
+using ErpSyncHub.Domain.Resilience;
 using Microsoft.EntityFrameworkCore;
 
 namespace ErpSyncHub.Infrastructure.Persistence;
@@ -22,6 +23,8 @@ public sealed class ErpSyncHubDbContext(DbContextOptions<ErpSyncHubDbContext> op
     public DbSet<InventorySyncRun> InventorySyncRuns => Set<InventorySyncRun>();
 
     public DbSet<AdminAuditEntry> AdminAudit => Set<AdminAuditEntry>();
+
+    public DbSet<CircuitBreaker> CircuitBreakers => Set<CircuitBreaker>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
