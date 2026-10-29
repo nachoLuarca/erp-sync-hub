@@ -1,12 +1,40 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <PackageId>SapB1.Client</PackageId>
+    <!-- El prefijo evita que el paquete parezca oficial de SAP; el ensamblado y los espacios de nombres siguen siendo SapB1.Client. -->
+    <PackageId>Luarca.SapB1.Client</PackageId>
+    <AssemblyName>SapB1.Client</AssemblyName>
+    <RootNamespace>SapB1.Client</RootNamespace>
+    <Title>Cliente de SAP Business One Service Layer</Title>
     <Authors>Ignacio Luarca</Authors>
-    <Description>Cliente tipado de .NET para el Service Layer de SAP Business One: login automático, renovación de sesión, Items, BusinessPartners y Orders.</Description>
-    <PackageTags>sap;business-one;service-layer;odata;erp</PackageTags>
+    <Copyright>Copyright (c) Ignacio Luarca</Copyright>
+    <Description>Cliente tipado de .NET para el Service Layer de SAP Business One: login automático, renovación de sesión, Items, BusinessPartners y Orders. No está afiliado ni respaldado por SAP SE.</Description>
+    <PackageTags>sap;business-one;sap-business-one;service-layer;odata;erp</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/nachoLuarca/erp-sync-hub</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/nachoLuarca/erp-sync-hub</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <!--
+    La versión del paquete sale del tag de git: el workflow de release la pasa con -p:Version=<tag sin la v>. Este valor solo
+    cubre los empaquetados locales, y deja claro que no es una versión publicable.
+  -->
+  <PropertyGroup>
+    <Version>0.0.0-local</Version>
+  </PropertyGroup>
+
+  <!--
+    Depuración en el paquete: símbolos en un .snupkg aparte y SourceLink (incluido en el SDK) para que el depurador del
+    consumidor baje el código fuente exacto del commit. Con -p:ContinuousIntegrationBuild=true (lo activa
+    Directory.Build.props en GitHub Actions) las rutas se normalizan y el build es determinista.
+  -->
+  <PropertyGroup>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
   </PropertyGroup>
 
   <ItemGroup>
