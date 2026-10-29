@@ -8,6 +8,8 @@ name: Release
 
 on:
   push:
+    # Solo tags, a propósito: con un filtro tags y sin branches, GitHub no dispara el workflow en pushes a ramas, que es lo que
+    # se quiere aquí (las ramas las cubre ci.yml, que sí declara branches).
     tags:
       - "v*"
   workflow_dispatch:

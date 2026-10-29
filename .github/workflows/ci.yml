@@ -2,7 +2,11 @@ name: CI
 
 on:
   push:
-    # Un tag v* dispara solo el workflow de release, que llama a este mismo CI: así no corre dos veces.
+    # Regla de GitHub: si un evento push define solo filtros de tags, el workflow se dispara únicamente con tags y NO con
+    # pushes a ramas. Por eso hay que declarar también branches. Aquí se quiere CI en todas las ramas y no en los tags v*,
+    # porque un tag dispara el workflow de release, que llama a este mismo CI (así no corre dos veces).
+    branches:
+      - "**"
     tags-ignore:
       - "v*"
   workflow_call:
