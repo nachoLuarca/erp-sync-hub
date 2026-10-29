@@ -1,6 +1,9 @@
 # ERP Sync Hub
 
 [![CI](https://github.com/nachoLuarca/erp-sync-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/nachoLuarca/erp-sync-hub/actions/workflows/ci.yml)
+[![Cobertura](https://codecov.io/gh/nachoLuarca/erp-sync-hub/graph/badge.svg)](https://codecov.io/gh/nachoLuarca/erp-sync-hub)
+[![Release](https://img.shields.io/github/v/release/nachoLuarca/erp-sync-hub?sort=semver&logo=github)](https://github.com/nachoLuarca/erp-sync-hub/releases)
+[![NuGet](https://img.shields.io/nuget/v/Luarca.SapB1.Client?logo=nuget&label=Luarca.SapB1.Client)](https://www.nuget.org/packages/Luarca.SapB1.Client)
 ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
 ![C# 14](https://img.shields.io/badge/C%23-14-239120?logo=csharp&logoColor=white)
 ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
@@ -19,21 +22,63 @@ ERP Sync Hub se interpone entre ambos y se encarga de:
 3. **Confiabilidad:** idempotencia, reintentos con backoff exponencial y *dead letter* para lo que no se puede resolver solo.
 4. **Panel (API):** consultar jobs, ver errores y reintentar manualmente.
 
+> **Aviso.** Este es un proyecto independiente de portafolio: no está afiliado, patrocinado ni respaldado por SAP SE. SAP y SAP Business One son marcas registradas de SAP SE. No hay un SAP real: [`SapB1.Mock`](docs/sap-mock.md) replica el contrato del Service Layer.
+
+## Cómo evaluar este proyecto en 5 minutos
+
+Necesitas Docker y PowerShell (en Linux o macOS, `pwsh`). No hace falta WooCommerce: el script hace de tienda y envía un pedido firmado, exactamente como lo haría el webhook real.
+
+```powershell
+# 1. Tres variables de esta sesión (nada se guarda en el repositorio)
+$env:ERPSYNC_POSTGRES_PASSWORD   = 'cambia-esto'
+$env:ERPSYNC_WC_WEBHOOK_SECRET   = 'un-secreto-de-16-o-mas-caracteres'
+$env:ERPSYNC_ADMIN_READ_API_KEYS = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')   # clave de lectura del panel
+
+# 2. PostgreSQL, SAP simulado, Seq y el hub (queda en http://localhost:5200)
+docker compose up -d --build --wait
+
+# 3. Envía un pedido firmado y mira qué pasó: el job en el panel y la Orden de Venta en el SAP simulado
+./scripts/demo-render.ps1 -HubUrl http://localhost:5200 -MockUrl http://localhost:5201
+```
+
+El script muestra el job con sus intentos (`succeeded`), la orden que quedó en SAP (con su `DocEntry` y `NumAtCard = WC-<pedido>`) y las métricas del panel. Después, para verlo con otros ojos:
+
+- **El panel:** `Invoke-RestMethod http://localhost:5200/admin/jobs -Headers @{ 'X-Api-Key' = $env:ERPSYNC_ADMIN_READ_API_KEYS }` (la clave va en `X-Api-Key`; [panel](docs/panel.md)).
+- **Seq:** abre http://localhost:5202 y filtra por `JobId = '<id del job>'` (el script lo imprime): verás el webhook recibido, el intento y la orden creada, con datos personales ya redactados.
+- **Una falla:** `Invoke-RestMethod -Method Put http://localhost:5201/_mock/faults -ContentType application/json -Body '{"Outage":true}'`, vuelve a enviar un pedido y observa cómo el job queda `retrying`; quita la falla con `-Method Delete` y se completa solo, sin duplicar la orden.
+- **Apagar y borrar todo:** `docker compose down -v`.
+
+El mismo script funciona contra la [demo desplegada en Render](docs/despliegue.md). Para recorrer además la tienda WooCommerce real, ver [prueba de punta a punta](#prueba-de-punta-a-punta-woocommerce--hub--sap).
+
 ## Arquitectura
 
 ```mermaid
 flowchart LR
-    Tienda["WooCommerce"] -- "webhook (HMAC-SHA256)" --> Api
-    subgraph Hub["ERP Sync Hub"]
-        Api["Api<br/>(webhooks, panel, health)"]
-        Worker["Worker<br/>(BackgroundService)"]
-        DB[("PostgreSQL<br/>sync_jobs")]
-        Api -- "encola job" --> DB
-        Worker -- "toma job<br/>FOR UPDATE SKIP LOCKED" --> DB
+    Tienda["Tienda WooCommerce"]
+    Operador(["Operador"])
+
+    subgraph Hub["ERP Sync Hub (.NET 10)"]
+        direction TB
+        Api["Api<br/>webhook HMAC-SHA256 · panel /admin · /health"]
+        Worker["Worker de pedidos<br/>reintentos con backoff · dead letter"]
+        Sync["Sincronización de<br/>stock y precios"]
+        CB{{"Circuit breaker<br/>de SAP"}}
+        Api -- "1. guarda el job<br/>(idempotente)" --> DB
+        Worker -- "2. toma jobs<br/>FOR UPDATE SKIP LOCKED" --> DB
+        Worker --> CB
+        Sync --> CB
+        DB[("PostgreSQL<br/>sync_jobs · mapeos · circuitos · auditoría")]
+        Sync -- "lock de sesión<br/>+ foto sincronizada" --> DB
     end
-    Worker -- "SapB1.Client" --> SAP["SAP B1 Service Layer<br/>(SapB1.Mock en desarrollo)"]
-    Worker -- "stock y precios" --> Tienda
+
+    Tienda -- "webhook order.created" --> Api
+    CB -- "SapB1.Client<br/>sesión y renovación" --> SAP["SAP B1 Service Layer<br/>(SapB1.Mock en desarrollo y en la demo)"]
+    Sync -- "stock y precios" --> Tienda
+    Operador -- "X-Api-Key<br/>lectura / operación" --> Api
+    Hub -. "logs estructurados" .-> Logs["Seq (local)<br/>consola (producción)"]
 ```
+
+Flujo de un pedido: el webhook se verifica y se guarda como job (un mismo pedido nunca crea dos); el worker lo toma con `FOR UPDATE SKIP LOCKED`, crea el cliente si no existe y la Orden de Venta en SAP; si SAP falla, el job se reintenta con espera exponencial y, agotados los intentos, pasa al *dead letter* hasta que alguien lo reintenta desde el panel. Los detalles están en [flujo de pedidos](docs/flujo-de-pedidos.md) y [flujo de stock y precios](docs/flujo-de-stock-y-precios.md).
 
 El código sigue **Clean Architecture** ([ADR 0002](docs/adr/0002-clean-architecture.md)); la regla de dependencias está validada por tests de arquitectura:
 
@@ -242,6 +287,45 @@ Los tests de integración usan [Testcontainers](https://dotnet.testcontainers.or
 
 En CI (GitHub Actions) no hace falta nada de esto: el runner ya tiene Docker y los tests corren directamente en él.
 
+## Patrones y decisiones
+
+Cada fila enlaza a la decisión (ADR) y al archivo del código donde vive.
+
+| Patrón o decisión | Qué resuelve | ADR | Código |
+|---|---|---|---|
+| Clean Architecture con regla de dependencias verificada | Capas que no se pueden contaminar entre sí | [0002](docs/adr/0002-clean-architecture.md) | [`ProjectReferenceTests.cs`](tests/ErpSyncHub.ArchitectureTests/ProjectReferenceTests.cs) |
+| Result pattern | Errores de negocio sin excepciones | [0002](docs/adr/0002-clean-architecture.md) | [`Result.cs`](src/ErpSyncHub.Domain/Common/Result.cs) |
+| PostgreSQL como cola (`FOR UPDATE SKIP LOCKED`) | Una cola confiable sin broker, con varios workers | [0003](docs/adr/0003-postgresql-como-cola.md) | [`PostgresJobQueue.cs`](src/ErpSyncHub.Infrastructure/Jobs/PostgresJobQueue.cs) |
+| Inbox idempotente y *lease* de jobs | Webhooks duplicados y workers que caen a mitad de un job | [0007](docs/adr/0007-inbox-y-cola-con-lease.md) | [`IJobQueue.cs`](src/ErpSyncHub.Application/Jobs/IJobQueue.cs) |
+| Verificación de firma HMAC-SHA256 | Solo la tienda legítima puede encolar pedidos | [0007](docs/adr/0007-inbox-y-cola-con-lease.md) | [`WooCommerceSignature.cs`](src/ErpSyncHub.Application/WooCommerce/WooCommerceSignature.cs) |
+| Sincronización de pedidos idempotente (cliente, productos, precios) | Un pedido nunca crea dos órdenes ni dos clientes en SAP | [0008](docs/adr/0008-sincronizacion-de-pedidos.md) | [`OrderSyncService.cs`](src/ErpSyncHub.Application/Sync/OrderSyncService.cs) |
+| Sincronización incremental con foto y exclusión mutua | Stock y precios sin reenviar todo ni correr dos veces a la vez | [0009](docs/adr/0009-sincronizacion-de-stock-y-precios.md) | [`InventorySyncService.cs`](src/ErpSyncHub.Application/Inventory/InventorySyncService.cs) |
+| Sesión del Service Layer: login perezoso y renovación reactiva | SAP expira sesiones; nadie lo nota | [0005](docs/adr/0005-sesion-del-service-layer.md) | [`SapB1SessionHandler.cs`](src/SapB1.Client/Internal/SapB1SessionHandler.cs) |
+| Excepciones tipadas en el cliente de SAP | Distinguir lo reintentable de lo definitivo | [0006](docs/adr/0006-excepciones-tipadas-en-sapb1-client.md) | [`SapB1ApiException.cs`](src/SapB1.Client/SapB1ApiException.cs) |
+| Backoff exponencial con jitter y dead letter | Sobrevivir a caídas de SAP sin perder pedidos | [0010](docs/adr/0010-resiliencia-reintentos-dead-letter-y-panel.md) | [`RetryPolicy.cs`](src/ErpSyncHub.Application/Jobs/RetryPolicy.cs) |
+| Circuit breaker compartido en PostgreSQL | No gastar intentos ni castigar a SAP mientras está caído | [0011](docs/adr/0011-circuit-breaker-de-sap.md) | [`CircuitBreakerService.cs`](src/ErpSyncHub.Application/Resilience/CircuitBreakerService.cs) |
+| Roles del panel, comparación en tiempo constante y auditoría | Quien mira no puede actuar, y toda acción deja huella | [0012](docs/adr/0012-roles-del-panel-y-auditoria.md) | [`AdminApiKeyAuthenticationHandler.cs`](src/ErpSyncHub.Api/Admin/AdminApiKeyAuthenticationHandler.cs) |
+| Redacción de datos personales en mensajes y logs | RUT y correos no llegan a la base ni a Seq | [0013](docs/adr/0013-redaccion-de-datos-personales.md) | [`PersonalDataRedactor.cs`](src/ErpSyncHub.Application/Common/PersonalDataRedactor.cs) |
+| SAP simulado según el contrato del Service Layer | Probar y demostrar sin un SAP real | [0004](docs/adr/0004-sap-simulado-segun-contrato-service-layer.md) | [`SapB1.Mock`](src/SapB1.Mock/MockServiceCollectionExtensions.cs) |
+| Despliegue gratuito en Render y Neon | Una demo pública y reproducible desde un archivo | [0014](docs/adr/0014-despliegue-gratuito-en-render-y-neon.md) | [`render.yaml`](render.yaml) |
+| Releases por tag, sin pull requests | Versión, paquete y changelog salen del tag | [0015](docs/adr/0015-releases-por-tag-sin-pull-requests.md) | [`release.yml`](.github/workflows/release.yml) |
+
+## Demo desplegada
+
+El hub y el SAP simulado se despliegan como servicios web del plan gratuito de Render, con PostgreSQL de Neon, declarados en [`render.yaml`](render.yaml). Es una demo, no producción: los servicios se duermen sin tráfico (la primera petición tarda cerca de un minuto), la sincronización periódica solo corre mientras el hub está despierto y el SAP simulado guarda su estado en memoria. La [guía de despliegue](docs/despliegue.md) explica cada limitación y los pasos que haces a mano en Neon y Render; `./scripts/demo-render.ps1` ejecuta la demo contra los servicios desplegados.
+
+## SapB1.Client en NuGet
+
+El cliente del Service Layer se publica como [`Luarca.SapB1.Client`](https://www.nuget.org/packages/Luarca.SapB1.Client) (los espacios de nombres siguen siendo `SapB1.Client`), con símbolos, SourceLink y build determinista:
+
+```bash
+dotnet add package Luarca.SapB1.Client
+```
+
+> **No afiliado a SAP.** El paquete es independiente: no está afiliado ni respaldado por SAP SE. SAP y SAP Business One son marcas registradas de SAP SE. El prefijo `Luarca.` del nombre lo distingue de cualquier producto de SAP.
+
+Cada tag `v*` dispara el [release](docs/release.md): CI completo, paquete con la versión del tag, GitHub Release con el changelog generado desde los Conventional Commits y publicación en NuGet.
+
 ## Estado por fase
 
 | Fase | Entregable | Versión | Estado |
@@ -252,13 +336,15 @@ En CI (GitHub Actions) no hace falta nada de esto: el runner ya tiene Docker y l
 | 3 | Sincronización periódica de stock y precios SAP → WooCommerce | v0.4.0 | ✅ Completa |
 | 4 | Backoff, dead letter, panel, reintento manual, simulación de fallas en el mock | v0.5.0 | ✅ Completa |
 | — | Endurecimiento: circuit breaker de SAP, mapeos obsoletos, roles del panel con auditoría, redacción contextual de datos personales | v0.6.0 | ✅ Completa |
-| 5 | Despliegue, diagrama final, NuGet de `SapB1.Client`, release automatizado | v1.0.0 | ⏳ Pendiente |
+| 5 | Despliegue en Render y Neon, diagrama, paquete NuGet de `SapB1.Client`, release por tag | v1.0.0 | ✅ Completa |
 
 ## Documentación
 
 - [SapB1.Mock](docs/sap-mock.md): endpoints, datos semilla y fidelidad al contrato del Service Layer.
 - [SapB1.Client](src/SapB1.Client/README.md): configuración, uso, sesión y errores.
 - [Flujo de pedidos](docs/flujo-de-pedidos.md): secuencia tienda → SAP, estados de un job, configuración y códigos de error.
+- [Flujo de stock y precios](docs/flujo-de-stock-y-precios.md), [panel](docs/panel.md) y [variables de entorno](docs/variables-de-entorno.md).
+- [Despliegue en Render y Neon](docs/despliegue.md) y [proceso de release](docs/release.md).
 
 ## Decisiones de arquitectura
 
@@ -266,4 +352,4 @@ Las decisiones relevantes están registradas en [`docs/adr`](docs/adr/README.md)
 
 ## Licencia
 
-[MIT](LICENSE) © 2026 Ignacio Luarca
+[MIT](LICENSE) © 2026 Ignacio Luarca. SAP y SAP Business One son marcas registradas de SAP SE; este proyecto no está afiliado ni respaldado por SAP SE.
