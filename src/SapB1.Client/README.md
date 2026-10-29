@@ -1,8 +1,20 @@
-# SapB1.Client
+# Luarca.SapB1.Client
+
+[![NuGet](https://img.shields.io/nuget/v/Luarca.SapB1.Client?logo=nuget)](https://www.nuget.org/packages/Luarca.SapB1.Client)
 
 Cliente tipado de .NET para el **Service Layer de SAP Business One** (v1). Inicia sesión por sí solo, renueva la sesión cuando SAP la da por expirada y expone artículos, socios de negocios y órdenes de venta.
 
-No depende de ningún otro proyecto de este repositorio, por lo que puede usarse de forma independiente. Se publicará en NuGet en la Fase 5.
+> **Aviso.** Este paquete es un proyecto independiente: no está afiliado, patrocinado ni respaldado por SAP SE. SAP y SAP Business One son marcas registradas de SAP SE. El prefijo `Luarca.` del nombre del paquete lo distingue de cualquier producto de SAP.
+
+No depende de ningún otro proyecto del repositorio [erp-sync-hub](https://github.com/nachoLuarca/erp-sync-hub), donde nació, por lo que puede usarse de forma independiente.
+
+## Instalación
+
+```bash
+dotnet add package Luarca.SapB1.Client
+```
+
+El nombre del paquete lleva el prefijo `Luarca.`, pero el ensamblado y los espacios de nombres son `SapB1.Client` (`using SapB1.Client;`, `using SapB1.Client.Models;`). Requiere .NET 10.
 
 ## Configuración
 
@@ -76,7 +88,7 @@ public class PedidosService(ISapB1Client sap)
 
 ## Sesión
 
-El cliente mantiene una sola sesión por proceso. La abre en la primera llamada y, si SAP responde `401`, inicia otra y reintenta la petición una vez, incluso un `POST` (SAP valida la sesión antes de procesar, así que no hay duplicados). Con muchas llamadas concurrentes sobre una sesión expirada se realiza un único login. Detalles en el [ADR 0005](../../docs/adr/0005-sesion-del-service-layer.md).
+El cliente mantiene una sola sesión por proceso. La abre en la primera llamada y, si SAP responde `401`, inicia otra y reintenta la petición una vez, incluso un `POST` (SAP valida la sesión antes de procesar, así que no hay duplicados). Con muchas llamadas concurrentes sobre una sesión expirada se realiza un único login. Detalles en el [ADR 0005](https://github.com/nachoLuarca/erp-sync-hub/blob/main/docs/adr/0005-sesion-del-service-layer.md).
 
 `LogoutAsync` cierra la sesión explícitamente; es opcional.
 
@@ -87,7 +99,7 @@ El cliente mantiene una sola sesión por proceso. La abre en la primera llamada 
 | `SapB1ApiException` | SAP rechazó la operación. Trae `StatusCode`, `SapErrorCode` y `SapErrorMessage`, además de `IsNotFound` e `IsAlreadyExists`. |
 | `SapB1SessionException` | No se pudo iniciar sesión, o SAP siguió rechazándola tras renovarla. |
 
-Los fallos de red, los tiempos de espera y la cancelación no se envuelven: llegan como `HttpRequestException`, `TaskCanceledException` u `OperationCanceledException`. Motivos de este diseño en el [ADR 0006](../../docs/adr/0006-excepciones-tipadas-en-sapb1-client.md).
+Los fallos de red, los tiempos de espera y la cancelación no se envuelven: llegan como `HttpRequestException`, `TaskCanceledException` u `OperationCanceledException`. Motivos de este diseño en el [ADR 0006](https://github.com/nachoLuarca/erp-sync-hub/blob/main/docs/adr/0006-excepciones-tipadas-en-sapb1-client.md).
 
 > Si agrega reintentos automáticos con `AddHttpClient(...).AddResilienceHandler(...)`, no reintente los `POST` sin una clave de idempotencia: crear dos veces una orden es un error de negocio. Para `Orders.CreateAsync`, detecte duplicados por `NumAtCard` como se muestra arriba.
 
@@ -97,4 +109,4 @@ Los fallos de red, los tiempos de espera y la cancelación no se envuelven: lleg
 - Una instancia del cliente usa un único servidor, sociedad y usuario.
 - `UpdateAsync` no puede borrar un campo: una propiedad en `null` no se envía.
 - Alcance: `Items`, `BusinessPartners` y `Orders`. Sin cancelación de órdenes, `$batch` ni campos de usuario.
-- Probado contra [SapB1.Mock](../../docs/sap-mock.md); validar contra un SAP real antes de producción.
+- Probado contra [SapB1.Mock](https://github.com/nachoLuarca/erp-sync-hub/blob/main/docs/sap-mock.md); validar contra un SAP real antes de producción.

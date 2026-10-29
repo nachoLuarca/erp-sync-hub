@@ -59,7 +59,7 @@ Las mismas variables sirven para un despliegue fuera de Compose. Para el detalle
 
 | Variable | Obligatoria | Por defecto | Para qué sirve |
 |---|---|---|---|
-| `Database__ConnectionString` | Sí | — | Cadena de conexión a PostgreSQL. Con la base de Compose: `Host=localhost;Port=5433;Database=erpsynchub;Username=erpsynchub;Password=<ERPSYNC_POSTGRES_PASSWORD>`. |
+| `Database__ConnectionString` | Sí | — | Cadena de conexión a PostgreSQL. En formato Npgsql o en formato URL (ver [cadena de conexión](#cadena-de-conexión-a-postgresql)). Con la base de Compose: `Host=localhost;Port=5433;Database=erpsynchub;Username=erpsynchub;Password=<ERPSYNC_POSTGRES_PASSWORD>`. |
 | `Database__MigrateOnStartup` | No | `false` | Aplica las migraciones al iniciar (útil en desarrollo; Compose lo activa). |
 | `Webhooks__WooCommerce__Secret` | Sí | — | Secreto del webhook; debe ser el mismo que el de WooCommerce. Mínimo 16 caracteres. |
 | `SAP__BaseUrl` | Sí | — | URL del Service Layer. Con el SAP simulado de Compose: `http://localhost:5201`. |
@@ -98,6 +98,57 @@ Las mismas variables sirven para un despliegue fuera de Compose. Para el detalle
 | `Sync__Inventory__TimeZoneId` | No | `America/Santiago` | Zona horaria de SAP (IANA), para convertir el instante de una ejecución en la fecha local de SAP con que se filtra `UpdateDate`. |
 
 La sincronización de stock y precios está explicada en [docs/flujo-de-stock-y-precios.md](flujo-de-stock-y-precios.md).
+
+## Despliegue en Render
+
+Render no usa Compose: se cargan las variables del hub y del SAP simulado directamente en cada servicio (las que no son secretas ya las fija [`render.yaml`](../render.yaml)). Además de las de las secciones siguientes, el Blueprint fija `ASPNETCORE_ENVIRONMENT=Production` (sin OpenAPI ni Scalar, logs en JSON por consola) y `PORT=8080` (el puerto de la imagen). Los pasos están en la [guía de despliegue](despliegue.md).
+
+## Scripts de demostración
+
+`scripts/demo-render.ps1` (y `scripts/e2e-tienda.ps1`, para las que corresponden) lee estas variables del entorno de la terminal; todas se pueden cambiar con parámetros del script.
+
+| Variable | Obligatoria | Por defecto | Para qué sirve |
+|---|---|---|---|
+| `ERPSYNC_WC_WEBHOOK_SECRET` | Sí | — | Secreto con que el script firma el pedido; debe ser el del hub al que se envía. |
+| `ERPSYNC_ADMIN_READ_API_KEYS` | Sí (u operación) | — | Clave con que el script consulta el panel; si hay varias, usa la primera. Sin ella usa `ERPSYNC_ADMIN_OPERATE_API_KEYS`. |
+| `ERPSYNC_SAP_COMPANY_DB` | No | `SBODemoCL` | Base de la compañía con que el script inicia sesión en el SAP simulado. |
+| `ERPSYNC_SAP_USER_NAME` | No | `manager` | Usuario con que el script inicia sesión en el SAP simulado. |
+| `ERPSYNC_SAP_PASSWORD` | No | `manager` | Contraseña con que el script inicia sesión en el SAP simulado; en un mock desplegado es la de `SapMock__Password`. |
+| `ERPSYNC_DEMO_HUB_URL` | No | — | Dirección del hub, si no se pasa `-HubUrl`. |
+| `ERPSYNC_DEMO_MOCK_URL` | No | — | Dirección del SAP simulado, si no se pasa `-MockUrl`. |
+
+## El SAP simulado
+
+Las lee `SapB1.Mock`. En Compose no hace falta definir ninguna: usa los valores de `appsettings.json` (credenciales ficticias `manager`/`manager`).
+
+| Variable | Obligatoria | Por defecto | Para qué sirve |
+|---|---|---|---|
+| `SapMock__CompanyDb` | No | `SBODemoCL` | Base de la compañía aceptada en el login. |
+| `SapMock__UserName` | No | `manager` | Usuario aceptado en el login. |
+| `SapMock__Password` | No | `manager` | Contraseña aceptada en el login. En un despliegue público, cámbiala (y usa la misma en `SAP__Password` del hub). |
+| `SapMock__AdminApiKey` | En un mock público | — | Clave (32 a 256 caracteres sin espacios) que exigen los endpoints `/_mock` en la cabecera `X-Api-Key`. Sin ella quedan abiertos. Ver [SAP simulado](sap-mock.md#endpoints-del-simulador). |
+
+## Cadena de conexión a PostgreSQL
+
+`Database__ConnectionString` admite dos formatos; el hub convierte el segundo al primero al iniciar, así que todo lo demás (EF Core, el lock de sincronización, las migraciones) ve siempre el de Npgsql.
+
+| Formato | Ejemplo |
+|---|---|
+| Npgsql | `Host=localhost;Port=5433;Database=erpsynchub;Username=erpsynchub;Password=<clave>` |
+| URL de PostgreSQL | `postgresql://erpsynchub:<clave>@localhost:5433/erpsynchub?sslmode=require` (también `postgres://`) |
+
+**La URL** es la que entregan Neon y la mayoría de los servicios gestionados: `postgresql://usuario:clave@host[:puerto]/base[?parámetros]`. El puerto por defecto es 5432. El usuario, la clave y la base se decodifican de `%XX`, así que una clave con caracteres especiales (`@ : / ? # % ;`) va codificada (`p@ss` es `p%40ss`). Los parámetros soportados son:
+
+| Parámetro | Se traduce a | Valores |
+|---|---|---|
+| `sslmode` | `SSL Mode` | `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full` |
+| `channel_binding` | `Channel Binding` | `disable`, `prefer`, `require` |
+| `connect_timeout` | `Timeout` | segundos (entero) |
+| `application_name` | `Application Name` | texto |
+
+Cualquier otro parámetro se rechaza al arrancar, con un mensaje que lo nombra; para esos ajustes usa el formato de Npgsql. Sin `sslmode`, Npgsql usa `prefer`: con un servicio gestionado define `sslmode=require` (o `verify-full`).
+
+**La contraseña nunca se muestra.** Una URL inválida impide arrancar con un mensaje que dice qué parámetro falló, sin incluir la cadena ni ninguna de sus partes, y la cadena convertida no se escribe en los logs.
 
 ## Claves del panel
 

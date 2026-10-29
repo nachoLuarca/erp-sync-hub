@@ -1,0 +1,206 @@
+name: Release
+
+# Se dispara al subir un tag v* (por ejemplo, v1.0.0): corre el CI completo, empaqueta SapB1.Client con la versión del tag,
+# publica el paquete en NuGet y crea la GitHub Release con el changelog generado desde los Conventional Commits.
+#
+# Con "Run workflow" (workflow_dispatch) hace todo lo anterior MENOS publicar: sirve para probar el proceso sin un tag.
+# Proceso completo y requisitos (secreto NUGET_API_KEY, etc.): docs/release.md.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  preparar:
+    name: Validar el tag y calcular la versión
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      publish: ${{ steps.version.outputs.publish }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Calcular la versión
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            tag="$REF_NAME"
+            if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::El tag '$tag' no es una versión semántica con prefijo v (por ejemplo v1.0.0 o v1.0.0-rc.1)."
+              exit 1
+            fi
+            version="${tag#v}"
+            publish=true
+          else
+            # Corrida manual: no hay tag. La versión es de prueba y nunca se publica.
+            tag=HEAD
+            version="0.0.1-dryrun.${RUN_NUMBER}"
+            publish=false
+          fi
+
+          prerelease=false
+          [[ "$version" == *-* ]] && prerelease=true
+
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Release: tag=$tag versión=$version pre-release=$prerelease publica=$publish"
+
+      - name: Comprobar que un release estable sale de main
+        if: ${{ steps.version.outputs.publish == 'true' && steps.version.outputs.prerelease == 'false' }}
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::El tag apunta a un commit que no está en main. Un release estable se etiqueta después del merge a main."
+            exit 1
+          fi
+
+  ci:
+    name: CI
+    needs: preparar
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+    permissions:
+      contents: read
+
+  paquete:
+    name: Empaquetar y generar el changelog
+    needs: [preparar, ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # El changelog necesita el historial y los tags.
+          fetch-depth: 0
+
+      - name: Instalar SDK de .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Empaquetar SapB1.Client
+        env:
+          VERSION: ${{ needs.preparar.outputs.version }}
+        run: >
+          dotnet pack src/SapB1.Client -c Release -o artifacts
+          -p:Version="$VERSION" -p:ContinuousIntegrationBuild=true
+
+      - name: Verificar el contenido del paquete
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.preparar.outputs.version }}
+        run: ./scripts/verificar-paquete.ps1 -Directory artifacts -Version $env:VERSION
+
+      - name: Generar el changelog
+        env:
+          TAG: ${{ needs.preparar.outputs.tag }}
+        run: |
+          scripts/changelog.sh --repo "$GITHUB_REPOSITORY" "$TAG" > artifacts/CHANGELOG.md
+          {
+            echo "## Changelog de $TAG"
+            echo
+            cat artifacts/CHANGELOG.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir el paquete y el changelog
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 14
+
+  publicar:
+    name: Publicar en NuGet y crear la GitHub Release
+    needs: [preparar, paquete]
+    if: ${{ needs.preparar.outputs.publish == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Instalar SDK de .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Descargar el paquete y el changelog
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: artifacts
+
+      # Primero NuGet, que es lo que no se puede deshacer. --skip-duplicate hace seguro volver a correr el workflow si la
+      # GitHub Release falló después: NuGet no admite republicar una versión.
+      - name: Publicar en NuGet
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [[ -z "$NUGET_API_KEY" ]]; then
+            echo "::error::Falta el secreto NUGET_API_KEY del repositorio (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          dotnet nuget push "artifacts/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push "artifacts/*.snupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Crear la GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.preparar.outputs.tag }}
+          PRERELEASE: ${{ needs.preparar.outputs.prerelease }}
+        run: |
+          flags=(--repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file artifacts/CHANGELOG.md)
+          if [[ "$PRERELEASE" == "true" ]]; then flags+=(--prerelease); else flags+=(--latest); fi
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" "${flags[@]}"
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber artifacts/*.nupkg artifacts/*.snupkg
+          else
+            gh release create "$TAG" "${flags[@]}" --verify-tag artifacts/*.nupkg artifacts/*.snupkg
+          fi
+
+      - name: Resumen
+        env:
+          VERSION: ${{ needs.preparar.outputs.version }}
+        run: |
+          {
+            echo "## Release $VERSION publicado"
+            echo
+            echo "- Paquete: https://www.nuget.org/packages/Luarca.SapB1.Client/$VERSION"
+            echo "- Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/v$VERSION"
+          } >> "$GITHUB_STEP_SUMMARY"

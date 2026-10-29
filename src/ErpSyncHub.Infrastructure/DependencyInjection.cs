@@ -36,6 +36,7 @@ public static class DependencyInjection
         services.AddOptions<DatabaseOptions>()
             .Bind(configuration.GetSection(DatabaseOptions.SectionName))
             .ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<DatabaseOptions>, DatabaseOptionsNormalizer>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<DatabaseOptions>, DatabaseOptionsValidator>());
 
         services.AddDbContext<ErpSyncHubDbContext>((serviceProvider, builder) =>

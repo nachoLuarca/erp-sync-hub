@@ -7,7 +7,10 @@ public sealed class DatabaseOptions
 {
     public const string SectionName = "Database";
 
-    /// <summary>Cadena de conexión a PostgreSQL. Contiene la contraseña: debe venir de una variable de entorno.</summary>
+    /// <summary>
+    /// Cadena de conexión a PostgreSQL, en formato Npgsql o URL (<c>postgresql://</c>); al iniciar se convierte al de Npgsql.
+    /// Contiene la contraseña: debe venir de una variable de entorno.
+    /// </summary>
     public string ConnectionString { get; set; } = string.Empty;
 
     /// <summary>
@@ -19,9 +22,21 @@ public sealed class DatabaseOptions
 
 internal sealed class DatabaseOptionsValidator : IValidateOptions<DatabaseOptions>
 {
-    public ValidateOptionsResult Validate(string? name, DatabaseOptions options) =>
-        string.IsNullOrWhiteSpace(options.ConnectionString)
-            ? ValidateOptionsResult.Fail(
-                $"{DatabaseOptions.SectionName}:{nameof(DatabaseOptions.ConnectionString)} es obligatorio (variable de entorno Database__ConnectionString).")
-            : ValidateOptionsResult.Success;
+    public ValidateOptionsResult Validate(string? name, DatabaseOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(options.ConnectionString))
+        {
+            return ValidateOptionsResult.Fail(
+                $"{DatabaseOptions.SectionName}:{nameof(DatabaseOptions.ConnectionString)} es obligatorio (variable de entorno Database__ConnectionString).");
+        }
+
+        // Una URL que sigue como URL llegó hasta aquí porque no se pudo convertir. El motivo nunca incluye la cadena: lleva la contraseña.
+        if (PostgresConnectionString.IsUrl(options.ConnectionString)
+            && !PostgresConnectionString.TryNormalize(options.ConnectionString, out _, out var error))
+        {
+            return ValidateOptionsResult.Fail($"{DatabaseOptions.SectionName}:{nameof(DatabaseOptions.ConnectionString)} (variable Database__ConnectionString): {error}");
+        }
+
+        return ValidateOptionsResult.Success;
+    }
 }

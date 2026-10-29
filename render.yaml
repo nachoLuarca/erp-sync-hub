@@ -1,0 +1,69 @@
+# Blueprint de Render: el hub y el SAP simulado como servicios web del plan gratuito.
+# La base de datos es PostgreSQL de Neon (no se crea aquí). Guía completa: docs/despliegue.md.
+#
+# Ningún secreto vive en este archivo: las variables con `sync: false` Render las pide al crear el Blueprint
+# (o se cargan a mano en el panel de cada servicio) y nunca se escriben en el repositorio.
+
+services:
+  - type: web
+    name: erp-sync-hub
+    runtime: docker
+    plan: free
+    region: virginia
+    dockerfilePath: ./src/ErpSyncHub.Api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    # Despliega solo cuando el CI de GitHub pasa en la rama conectada.
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      # Debe coincidir con ASPNETCORE_HTTP_PORTS de la imagen (8080); Render enruta el tráfico a este puerto.
+      - key: PORT
+        value: "8080"
+      # Instancia única en el plan gratuito, así que migrar al arrancar es seguro. Con varias instancias, migrar como paso aparte.
+      - key: Database__MigrateOnStartup
+        value: "true"
+      - key: SAP__CompanyDb
+        value: SBODemoCL
+      - key: SAP__UserName
+        value: manager
+      # Cadena de conexión DIRECTA de Neon (no la del pooler), en formato URL o Npgsql, con SSL obligatorio.
+      - key: Database__ConnectionString
+        sync: false
+      - key: Webhooks__WooCommerce__Secret
+        sync: false
+      # URL pública HTTPS del servicio sap-mock (el plan gratuito no tiene red privada).
+      - key: SAP__BaseUrl
+        sync: false
+      # Debe ser la misma que SapMock__Password del servicio sap-mock.
+      - key: SAP__Password
+        sync: false
+      - key: Admin__ReadApiKeys
+        sync: false
+      - key: Admin__OperateApiKeys
+        sync: false
+
+  - type: web
+    name: sap-mock
+    runtime: docker
+    plan: free
+    region: virginia
+    dockerfilePath: ./src/SapB1.Mock/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: PORT
+        value: "8080"
+      - key: SapMock__CompanyDb
+        value: SBODemoCL
+      - key: SapMock__UserName
+        value: manager
+      - key: SapMock__Password
+        sync: false
+      # Protege los endpoints /_mock (reset, fallas): el mock es público y sin esta clave cualquiera podría borrar sus datos.
+      - key: SapMock__AdminApiKey
+        sync: false

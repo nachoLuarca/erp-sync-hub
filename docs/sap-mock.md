@@ -53,6 +53,8 @@ Fuera del contrato de SAP y sin sesión; sirven para pruebas automáticas y para
 | `POST /_mock/sessions/expire` | Invalida todas las sesiones abiertas, como si hubieran expirado. |
 | `PATCH /_mock/items/{itemCode}` | Cambia stock físico (`InStock`), comprometido (`Committed`), precio (`Price`) o congela el artículo (`Frozen`); `WarehouseCode` y `PriceList` eligen el almacén y la lista (por defecto `01` y `1`). Actualiza `UpdateDate`/`UpdateTime`. Responde 204, 404 si no existe o 400 con valores negativos. |
 
+**Protección.** Con `SapMock__AdminApiKey` definida (de 32 a 256 caracteres sin espacios), todos los endpoints `/_mock` exigen la cabecera `X-Api-Key` y responden 401 si falta o no coincide; `/health` y el Service Layer no se ven afectados. Sin la variable quedan abiertos, que es lo correcto en local y en las pruebas, pero **un mock expuesto a internet debe definirla** (el despliegue en Render lo hace; ver [despliegue](despliegue.md)). Una clave inválida impide arrancar.
+
 ### Simulación de fallas
 
 `PUT /_mock/faults` activa fallas que se inyectan en las peticiones del Service Layer (`/b1s/v1`, incluido el login); `/health` y `/_mock` nunca se ven afectados. Reemplaza la configuración anterior y reinicia los contadores. `GET /_mock/faults` devuelve la configuración y cuántas veces se inyectó cada falla; `DELETE /_mock/faults` y `POST /_mock/reset` las quitan. Una configuración inválida responde 400 y no cambia nada.
