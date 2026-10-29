@@ -34,13 +34,13 @@ Nada de esto vive en el repositorio: son cuentas y secretos tuyos.
 
 1. Crea un proyecto en [Neon](https://console.neon.tech) en la región **AWS US East 1 (N. Virginia)**, la misma zona que usa Render en el Blueprint (*Virginia*), para que la latencia entre ambos sea mínima.
 2. En *Connect*, desmarca *Connection pooling* y copia los datos de la conexión **directa** (el host **sin** `-pooler`). Hace falta la directa porque el hub toma locks de sesión de PostgreSQL (`pg_advisory_lock`), que un pooler en modo transacción no respeta.
-3. Arma la cadena de conexión en el formato de Npgsql (no sirve la URL `postgresql://…` que muestra Neon):
+3. Usa como `Database__ConnectionString` la URL que muestra Neon, tal cual, **con el host directo** (sin `-pooler`). El hub acepta el formato URL y lo convierte al iniciar:
 
    ```
-   Host=ep-xxxx-xxxx.us-east-1.aws.neon.tech;Port=5432;Database=neondb;Username=<usuario>;Password=<contraseña>;SSL Mode=Require
+   postgresql://<usuario>:<contraseña>@ep-xxxx-xxxx.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
    ```
 
-   No copies parámetros de la URL como `channel_binding`. Neon exige SSL, por eso `SSL Mode=Require`.
+   También sirve el formato de Npgsql (`Host=ep-xxxx-xxxx.us-east-1.aws.neon.tech;Port=5432;Database=neondb;Username=<usuario>;Password=<contraseña>;SSL Mode=Require`). Si la contraseña tiene caracteres especiales (`@ : / ? # % ;`), en la URL van codificados con `%` (por ejemplo `@` es `%40`); Neon ya la entrega así. Los detalles y los parámetros soportados están en [variables de entorno](variables-de-entorno.md#cadena-de-conexión-a-postgresql).
 
 ### 2. Genera los secretos
 
@@ -119,7 +119,7 @@ Las variables que fija el Blueprint (y las que carga cada persona) son las de [v
 | Síntoma | Causa probable |
 |---|---|
 | El hub no arranca y el log dice que `Database:ConnectionString` o `SAP:*` es obligatorio | Falta cargar una variable `sync: false` en Render. |
-| `Npgsql… SSL` o error de autenticación | La cadena no está en formato Npgsql, falta `SSL Mode=Require`, o usaste el host `-pooler`. |
+| `Npgsql… SSL` o error de autenticación | La cadena no es válida (el mensaje del arranque dice qué parámetro; nunca muestra la contraseña), falta `sslmode=require` / `SSL Mode=Require`, o usaste el host `-pooler`. |
 | `/health` responde `Degraded` | Postgres está bien pero SAP no responde: el mock está dormido o `SAP__BaseUrl` / `SAP__Password` no coinciden con el mock. El hub sigue aceptando pedidos. |
 | El webhook responde 401 | `ERPSYNC_WC_WEBHOOK_SECRET` del script no es el de `Webhooks__WooCommerce__Secret` del hub. |
 | Los jobs quedan en `retrying` con errores `sap.*` (por ejemplo `sap.session`) | La contraseña de SAP no coincide: `SAP__Password` (hub) y `SapMock__Password` (mock) deben ser idénticas. |

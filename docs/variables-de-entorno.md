@@ -59,7 +59,7 @@ Las mismas variables sirven para un despliegue fuera de Compose. Para el detalle
 
 | Variable | Obligatoria | Por defecto | Para qué sirve |
 |---|---|---|---|
-| `Database__ConnectionString` | Sí | — | Cadena de conexión a PostgreSQL. Con la base de Compose: `Host=localhost;Port=5433;Database=erpsynchub;Username=erpsynchub;Password=<ERPSYNC_POSTGRES_PASSWORD>`. |
+| `Database__ConnectionString` | Sí | — | Cadena de conexión a PostgreSQL. En formato Npgsql o en formato URL (ver [cadena de conexión](#cadena-de-conexión-a-postgresql)). Con la base de Compose: `Host=localhost;Port=5433;Database=erpsynchub;Username=erpsynchub;Password=<ERPSYNC_POSTGRES_PASSWORD>`. |
 | `Database__MigrateOnStartup` | No | `false` | Aplica las migraciones al iniciar (útil en desarrollo; Compose lo activa). |
 | `Webhooks__WooCommerce__Secret` | Sí | — | Secreto del webhook; debe ser el mismo que el de WooCommerce. Mínimo 16 caracteres. |
 | `SAP__BaseUrl` | Sí | — | URL del Service Layer. Con el SAP simulado de Compose: `http://localhost:5201`. |
@@ -127,6 +127,28 @@ Las lee `SapB1.Mock`. En Compose no hace falta definir ninguna: usa los valores 
 | `SapMock__UserName` | No | `manager` | Usuario aceptado en el login. |
 | `SapMock__Password` | No | `manager` | Contraseña aceptada en el login. En un despliegue público, cámbiala (y usa la misma en `SAP__Password` del hub). |
 | `SapMock__AdminApiKey` | En un mock público | — | Clave (32 a 256 caracteres sin espacios) que exigen los endpoints `/_mock` en la cabecera `X-Api-Key`. Sin ella quedan abiertos. Ver [SAP simulado](sap-mock.md#endpoints-del-simulador). |
+
+## Cadena de conexión a PostgreSQL
+
+`Database__ConnectionString` admite dos formatos; el hub convierte el segundo al primero al iniciar, así que todo lo demás (EF Core, el lock de sincronización, las migraciones) ve siempre el de Npgsql.
+
+| Formato | Ejemplo |
+|---|---|
+| Npgsql | `Host=localhost;Port=5433;Database=erpsynchub;Username=erpsynchub;Password=<clave>` |
+| URL de PostgreSQL | `postgresql://erpsynchub:<clave>@localhost:5433/erpsynchub?sslmode=require` (también `postgres://`) |
+
+**La URL** es la que entregan Neon y la mayoría de los servicios gestionados: `postgresql://usuario:clave@host[:puerto]/base[?parámetros]`. El puerto por defecto es 5432. El usuario, la clave y la base se decodifican de `%XX`, así que una clave con caracteres especiales (`@ : / ? # % ;`) va codificada (`p@ss` es `p%40ss`). Los parámetros soportados son:
+
+| Parámetro | Se traduce a | Valores |
+|---|---|---|
+| `sslmode` | `SSL Mode` | `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full` |
+| `channel_binding` | `Channel Binding` | `disable`, `prefer`, `require` |
+| `connect_timeout` | `Timeout` | segundos (entero) |
+| `application_name` | `Application Name` | texto |
+
+Cualquier otro parámetro se rechaza al arrancar, con un mensaje que lo nombra; para esos ajustes usa el formato de Npgsql. Sin `sslmode`, Npgsql usa `prefer`: con un servicio gestionado define `sslmode=require` (o `verify-full`).
+
+**La contraseña nunca se muestra.** Una URL inválida impide arrancar con un mensaje que dice qué parámetro falló, sin incluir la cadena ni ninguna de sus partes, y la cadena convertida no se escribe en los logs.
 
 ## Claves del panel
 

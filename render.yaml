@@ -28,7 +28,7 @@ services:
         value: SBODemoCL
       - key: SAP__UserName
         value: manager
-      # Cadena de conexión DIRECTA de Neon (no la del pooler) en formato Npgsql, con SSL Mode=Require.
+      # Cadena de conexión DIRECTA de Neon (no la del pooler), en formato URL o Npgsql, con SSL obligatorio.
       - key: Database__ConnectionString
         sync: false
       - key: Webhooks__WooCommerce__Secret

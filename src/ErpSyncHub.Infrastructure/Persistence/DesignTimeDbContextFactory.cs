@@ -13,6 +13,6 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<E
         var connectionString = Environment.GetEnvironmentVariable("Database__ConnectionString")
             ?? "Host=localhost;Database=erpsynchub_design";
 
-        return new ErpSyncHubDbContext(DbContextSetup.BuildOptions(connectionString));
+        return new ErpSyncHubDbContext(DbContextSetup.BuildOptions(PostgresConnectionString.Normalize(connectionString)));
     }
 }
