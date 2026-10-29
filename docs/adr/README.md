@@ -17,6 +17,7 @@ Cada decisión relevante se documenta en un ADR numerado e inmutable: si una dec
 | [0011](0011-circuit-breaker-de-sap.md) | Circuit breaker de SAP compartido por todas las instancias | Aceptada |
 | [0012](0012-roles-del-panel-y-auditoria.md) | Roles del panel, autenticación con ASP.NET Core y auditoría de acciones | Aceptada |
 | [0013](0013-redaccion-de-datos-personales.md) | Redacción de datos personales en mensajes externos y logs | Aceptada |
+| [0014](0014-despliegue-gratuito-en-render-y-neon.md) | Despliegue de demostración gratuito en Render y Neon | Aceptada |
 
 ## Plantilla
 
