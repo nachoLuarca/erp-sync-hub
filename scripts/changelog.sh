@@ -98,7 +98,8 @@ print_section() {
   fi
 }
 
-if [[ -z "${sections[*]//[[:space:]]/}" ]]; then
+all_sections="${sections[*]}"
+if [[ -z "${all_sections//[[:space:]]/}" ]]; then
   printf 'Sin cambios registrados en este rango.\n\n'
 fi
 
