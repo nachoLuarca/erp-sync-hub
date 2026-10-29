@@ -7,12 +7,13 @@ namespace SapB1.Mock.Admin;
 /// <summary>
 /// Endpoints propios del simulador, fuera del contrato del Service Layer y sin sesión,
 /// pensados para pruebas automáticas y para simular fallas.
+/// Exigen <c>X-Api-Key</c> si el mock define <c>SapMock:AdminApiKey</c>.
 /// </summary>
 internal static class AdminEndpoints
 {
     public static void MapAdmin(this IEndpointRouteBuilder app)
     {
-        var admin = app.MapGroup("/_mock").ExcludeFromDescription();
+        var admin = app.MapGroup("/_mock").ExcludeFromDescription().AddEndpointFilter<AdminKeyFilter>();
 
         admin.MapPost("/reset", (IEnumerable<IResettable> resettables) =>
         {

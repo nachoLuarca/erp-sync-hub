@@ -64,3 +64,6 @@ services:
         value: manager
       - key: SapMock__Password
         sync: false
+      # Protege los endpoints /_mock (reset, fallas): el mock es público y sin esta clave cualquiera podría borrar sus datos.
+      - key: SapMock__AdminApiKey
+        sync: false

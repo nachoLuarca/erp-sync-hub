@@ -99,6 +99,17 @@ Las mismas variables sirven para un despliegue fuera de Compose. Para el detalle
 
 La sincronización de stock y precios está explicada en [docs/flujo-de-stock-y-precios.md](flujo-de-stock-y-precios.md).
 
+## El SAP simulado
+
+Las lee `SapB1.Mock`. En Compose no hace falta definir ninguna: usa los valores de `appsettings.json` (credenciales ficticias `manager`/`manager`).
+
+| Variable | Obligatoria | Por defecto | Para qué sirve |
+|---|---|---|---|
+| `SapMock__CompanyDb` | No | `SBODemoCL` | Base de la compañía aceptada en el login. |
+| `SapMock__UserName` | No | `manager` | Usuario aceptado en el login. |
+| `SapMock__Password` | No | `manager` | Contraseña aceptada en el login. En un despliegue público, cámbiala (y usa la misma en `SAP__Password` del hub). |
+| `SapMock__AdminApiKey` | En un mock público | — | Clave (32 a 256 caracteres sin espacios) que exigen los endpoints `/_mock` en la cabecera `X-Api-Key`. Sin ella quedan abiertos. Ver [SAP simulado](sap-mock.md#endpoints-del-simulador). |
+
 ## Claves del panel
 
 Todo lo que cuelga de `/admin` exige la cabecera `X-Api-Key`. Hay **dos niveles de clave**, en variables separadas ([ADR 0012](adr/0012-roles-del-panel-y-auditoria.md)):
