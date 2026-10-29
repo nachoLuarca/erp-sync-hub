@@ -48,19 +48,7 @@ public class ProjectReferenceTests
 
     private static XDocument ReadProject(string folder, string project)
     {
-        var path = Path.Combine(FindRepositoryRoot(), folder, project, $"{project}.csproj");
+        var path = Path.Combine(RepositoryRoot.Find(), folder, project, $"{project}.csproj");
         return XDocument.Load(path);
-    }
-
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "ErpSyncHub.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName
-            ?? throw new InvalidOperationException("No se encontró la raíz del repositorio (ErpSyncHub.slnx).");
     }
 }
