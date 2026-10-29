@@ -99,6 +99,24 @@ Las mismas variables sirven para un despliegue fuera de Compose. Para el detalle
 
 La sincronización de stock y precios está explicada en [docs/flujo-de-stock-y-precios.md](flujo-de-stock-y-precios.md).
 
+## Despliegue en Render
+
+Render no usa Compose: se cargan las variables del hub y del SAP simulado directamente en cada servicio (las que no son secretas ya las fija [`render.yaml`](../render.yaml)). Además de las de las secciones siguientes, el Blueprint fija `ASPNETCORE_ENVIRONMENT=Production` (sin OpenAPI ni Scalar, logs en JSON por consola) y `PORT=8080` (el puerto de la imagen). Los pasos están en la [guía de despliegue](despliegue.md).
+
+## Scripts de demostración
+
+`scripts/demo-render.ps1` (y `scripts/e2e-tienda.ps1`, para las que corresponden) lee estas variables del entorno de la terminal; todas se pueden cambiar con parámetros del script.
+
+| Variable | Obligatoria | Por defecto | Para qué sirve |
+|---|---|---|---|
+| `ERPSYNC_WC_WEBHOOK_SECRET` | Sí | — | Secreto con que el script firma el pedido; debe ser el del hub al que se envía. |
+| `ERPSYNC_ADMIN_READ_API_KEYS` | Sí (u operación) | — | Clave con que el script consulta el panel; si hay varias, usa la primera. Sin ella usa `ERPSYNC_ADMIN_OPERATE_API_KEYS`. |
+| `ERPSYNC_SAP_COMPANY_DB` | No | `SBODemoCL` | Base de la compañía con que el script inicia sesión en el SAP simulado. |
+| `ERPSYNC_SAP_USER_NAME` | No | `manager` | Usuario con que el script inicia sesión en el SAP simulado. |
+| `ERPSYNC_SAP_PASSWORD` | No | `manager` | Contraseña con que el script inicia sesión en el SAP simulado; en un mock desplegado es la de `SapMock__Password`. |
+| `ERPSYNC_DEMO_HUB_URL` | No | — | Dirección del hub, si no se pasa `-HubUrl`. |
+| `ERPSYNC_DEMO_MOCK_URL` | No | — | Dirección del SAP simulado, si no se pasa `-MockUrl`. |
+
 ## El SAP simulado
 
 Las lee `SapB1.Mock`. En Compose no hace falta definir ninguna: usa los valores de `appsettings.json` (credenciales ficticias `manager`/`manager`).
