@@ -18,6 +18,7 @@ Cada decisión relevante se documenta en un ADR numerado e inmutable: si una dec
 | [0012](0012-roles-del-panel-y-auditoria.md) | Roles del panel, autenticación con ASP.NET Core y auditoría de acciones | Aceptada |
 | [0013](0013-redaccion-de-datos-personales.md) | Redacción de datos personales en mensajes externos y logs | Aceptada |
 | [0014](0014-despliegue-gratuito-en-render-y-neon.md) | Despliegue de demostración gratuito en Render y Neon | Aceptada |
+| [0015](0015-releases-por-tag-sin-pull-requests.md) | Releases disparados por tag, sin pull requests | Aceptada |
 
 ## Plantilla
 
